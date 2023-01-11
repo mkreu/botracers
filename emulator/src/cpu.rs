@@ -35,7 +35,7 @@ impl Cpu {
         match opcode {
             0x13 => {
                 let imm = ((inst & 0xfff00000) as i32 >> 20) as u32;
-                let shamt = ((inst & 0x003f00000) as i32 >> 20) as u32;
+                let shamt = rs2 as u32;
                 match funct3 {
                     0x0 => {
                         // addi
@@ -58,6 +58,10 @@ impl Cpu {
                         self.regs[rd] = if self.regs[rs1] < imm { 1 } else { 0 };
                     }
                     0x4 => {
+                        // xori
+                        self.regs[rd] = self.regs[rs1] ^ imm;
+                    }
+                    0x5 => {
                         if (inst & 0x4000_0000) > 0 {
                             // srai
                             self.regs[rd] = ((self.regs[rs1] as i32) >> shamt) as u32;
@@ -65,10 +69,6 @@ impl Cpu {
                             // srli
                             self.regs[rd] = self.regs[rs1] >> shamt;
                         }
-                    }
-                    0x5 => {
-                        // xori
-                        self.regs[rd] = self.regs[rs1] ^ imm;
                     }
                     0x6 => {
                         // ori
@@ -84,8 +84,85 @@ impl Cpu {
                 }
             }
             0x33 => {
-                // add
-                self.regs[rd] = self.regs[rs1].wrapping_add(self.regs[rs2]);
+                match funct3 {
+                    0x0 => {
+                        if (inst & 0x4000_0000) > 0 {
+                            // add
+                            self.regs[rd] = self.regs[rs1].wrapping_add(self.regs[rs2]);
+                        } else {
+                            // sub
+                            self.regs[rd] = self.regs[rs1].wrapping_sub(self.regs[rs2]);
+                        }
+                    }
+                    0x1 => {
+                        // sll
+                        let shamt = self.regs[rs2] & 0x1f;
+                        self.regs[rd] = self.regs[rs1] << shamt;
+                    }
+                    0x2 => {
+                        // slt
+                        self.regs[rd] = if (self.regs[rs1] as i32) < (self.regs[rs2] as i32) {
+                            1
+                        } else {
+                            0
+                        };
+                    }
+                    0x3 => {
+                        // sltu
+                        self.regs[rd] = if self.regs[rs1] < self.regs[rs2] {
+                            1
+                        } else {
+                            0
+                        };
+                    }
+                    0x4 => {
+                        // xor
+                        self.regs[rd] = self.regs[rs1] ^ self.regs[rs2];
+                    }
+                    0x5 => {
+                        let shamt = self.regs[rs2] & 0x1f;
+                        if (inst & 0x4000_0000) > 0 {
+                            // sra
+                            self.regs[rd] = ((self.regs[rs1] as i32) >> shamt) as u32;
+                        } else {
+                            // srl
+                            self.regs[rd] = self.regs[rs1] >> shamt;
+                        }
+                    }
+                    0x6 => {
+                        // or
+                        self.regs[rd] = self.regs[rs1] | self.regs[rs2];
+                    }
+                    0x7 => {
+                        // and
+                        self.regs[rd] = self.regs[rs1] & self.regs[rs2];
+                    }
+                    _ => {
+                        dbg!("func not implemented yet");
+                    }
+                }
+            }
+            0x37 => {
+                // lui
+                let imm = inst & 0xfffff000;
+                self.regs[rd] = imm;
+            }
+            0x17 => {
+                // apcui
+                let imm = inst & 0xfffff000;
+                self.regs[rd] = self.pc.wrapping_add(imm);
+            }
+            0x6f => {
+                //jal
+                self.regs[rd] = self.pc.wrapping_add(4);
+
+                // imm[20|10:1|11|19:12] = inst[31|30:21|20|19:12]
+                let imm = (((inst & 0x80000000) as i32 >> 11) as u32) // imm[20]
+                    | (inst & 0xff000) // imm[19:12]
+                    | ((inst >> 9) & 0x800) // imm[11]
+                    | ((inst >> 20) & 0x7fe); // imm[10:1]
+
+                self.pc = self.pc.wrapping_add(imm);
             }
             _ => {
                 dbg!("opcode not implemented yet");
@@ -123,7 +200,7 @@ pub mod test {
     }
     #[test]
     fn test_xori() {
-        test_itype(0x5, -5, 20, (-5) ^ 20)
+        test_itype(0x4, -5, 20, (-5) ^ 20)
     }
     #[test]
     fn test_slli() {
@@ -131,14 +208,14 @@ pub mod test {
     }
     #[test]
     fn test_srli() {
-        test_itype_u(0x4, 0x00130000, 4, 0x00013000);
-        test_itype_u(0x4, 0xff130000, 8, 0x00ff1300);
+        test_itype_u(0x5, 0x00130000, 4, 0x00013000);
+        test_itype_u(0x5, 0xff130000, 8, 0x00ff1300);
     }
     #[test]
     fn test_srai() {
         let ai = 1 << 10;
-        test_itype_u(0x4, 0x00130000, 4 | ai, 0x00013000);
-        test_itype_u(0x4, 0xff130000, 8 | ai, 0xffff1300);
+        test_itype_u(0x5, 0x00130000, 4 | ai, 0x00013000);
+        test_itype_u(0x5, 0xff130000, 8 | ai, 0xffff1300);
     }
 
     fn test_itype_u(funct3: u32, reg_val: u32, imm: i32, uut: u32) {
