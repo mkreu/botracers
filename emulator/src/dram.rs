@@ -4,7 +4,7 @@
 pub const DRAM_SIZE: u32 = 1024 * 1024 * 128;
 
 /// The address which dram starts, same as QEMU virt machine.
-pub const DRAM_BASE: u32 = 0x8000_0000;
+pub const DRAM_BASE: u32 = 0x80_0000;
 
 /// The dynamic random access dram (DRAM).
 #[derive(Debug)]
@@ -12,14 +12,42 @@ pub struct Dram {
     pub dram: Vec<u8>,
 }
 
+use elf::{abi::PT_LOAD, endian::LittleEndian, ElfBytes};
+
 #[allow(dead_code)]
 impl Dram {
     /// Create a new `Dram` instance with default dram size.
-    pub fn new(code: Vec<u8>) -> Dram {
+    pub fn new(code: Vec<u8>) -> (Dram, u32) {
+        let elf = ElfBytes::<LittleEndian>::minimal_parse(&code).expect("failed to parse elf file");
+
+        let all_load_phdrs = elf
+            .segments()
+            .unwrap()
+            .iter()
+            .filter(|phdr| phdr.p_type == PT_LOAD)
+            .collect::<Vec<_>>();
+
+            let dram_size = all_load_phdrs.iter().map(|phdr| phdr.p_vaddr-DRAM_BASE as u64 + phdr.p_memsz).max().unwrap();
+
+        let mut mem = vec![0u8; dram_size as usize];
+
+        for phdr in all_load_phdrs {
+            let vaddr = phdr.p_vaddr as usize - DRAM_BASE as usize;
+            let offset = phdr.p_offset as usize;
+            let filesz = phdr.p_filesz as usize;
+
+            println!("vaddr: {vaddr:x}");
+            println!("offset: {offset:x}");
+            println!("filesz: {filesz:x}");
+            mem[vaddr..vaddr + filesz].copy_from_slice(&code[offset..offset + filesz]);
+        }
+
+        let entry = elf.ehdr.e_entry;
+        println!("entry: {entry:x}");
         let mut dram = vec![0; DRAM_SIZE as usize];
         dram.splice(..code.len(), code.iter().cloned());
 
-        Self { dram }
+        (Self { dram:mem }, elf.ehdr.e_entry as u32)
     }
 
     /// Load bytes from the little-endiam dram.

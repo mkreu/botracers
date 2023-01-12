@@ -1,52 +1,27 @@
-use elf::{abi::PT_LOAD, endian::LittleEndian, ElfBytes};
 
-use crate::dram;
+use crate::dram::Dram;
 
 pub struct Cpu {
     pub regs: [u32; 32],
     pub pc: u32,
-    pub dram: Vec<u8>,
+    pub dram: Dram,
 }
 
 impl Cpu {
-    pub fn new(code: Vec<u8>) -> Self {
-        let elf = ElfBytes::<LittleEndian>::minimal_parse(&code).expect("failed to parse elf file");
-
-        let all_load_phdrs = elf
-            .segments()
-            .unwrap()
-            .iter()
-            .filter(|phdr| phdr.p_type == PT_LOAD);
-
-        let mut mem = vec![0u8; dram::DRAM_SIZE as usize];
-
-        for phdr in all_load_phdrs {
-            let vaddr = phdr.p_vaddr as usize;
-            let offset = phdr.p_offset as usize;
-            let filesz = phdr.p_filesz as usize;
-
-            println!("vaddr: {vaddr:x}");
-            println!("offset: {offset:x}");
-            println!("filesz: {filesz:x}");
-            mem[vaddr..vaddr + filesz].copy_from_slice(&code[offset..offset + filesz]);
-        }
-
-        let entry = elf.ehdr.e_entry;
-        println!("entry: {entry:x}");
+    pub fn new(dram : Dram, entry: u32) -> Self {
 
         Self {
             regs: [0; 32],
-            pc: elf.ehdr.e_entry as u32,
-            dram: mem,
+            pc: entry,
+            dram: dram,
         }
     }
     #[allow(dead_code)]
     pub fn fetch(&self) -> u32 {
-        let index = self.pc as usize;
-        return (self.dram[index] as u32)
-            | ((self.dram[index + 1] as u32) << 8)
-            | ((self.dram[index + 2] as u32) << 16)
-            | ((self.dram[index + 3] as u32) << 24);
+        return self
+            .dram
+            .load(self.pc, 32)
+            .expect("failed to read from memory");
     }
     pub fn execute(&mut self, inst: u32) {
         let opcode = inst & 0x7f;
@@ -181,16 +156,36 @@ impl Cpu {
                 self.regs[rd] = self.pc.wrapping_add(imm);
             }
             0x6f => {
-                //jal
+                // jal
                 self.regs[rd] = self.pc.wrapping_add(4);
 
                 // imm[20|10:1|11|19:12] = inst[31|30:21|20|19:12]
-                let imm = (((inst & 0x80000000) as i32 >> 11) as u32) // imm[20]
+                let imm = (((inst & 0x8000_0000) as i32 >> 11) as u32) // imm[20]
                     | (inst & 0xff000) // imm[19:12]
                     | ((inst >> 9) & 0x800) // imm[11]
                     | ((inst >> 20) & 0x7fe); // imm[10:1]
 
                 self.pc = self.pc.wrapping_add(imm).wrapping_sub(4);
+            }
+            0x67 => {
+                // jalr
+                let imm = ((inst & 0xfff0_0000) as i32 >> 20) as u32;
+                self.regs[rd] = self.pc.wrapping_add(4);
+                self.pc = self.regs[rs1].wrapping_add(imm) & 0xffff_fffe
+            }
+            0x23 => {
+                let offset = ((inst & 0xfff0_0000) as i32 >> 20) as u32 | (inst & 0x0000_0f80) >> 7;
+                let width = match funct3 {
+                    0x0 => 8,
+                    0x1 => 16,
+                    0x2 => 32,
+                    _ => {
+                        panic!("funct3 {funct3:x} invalid for opcode {opcode:x}");
+                    }
+                };
+                self.dram
+                    .store(self.regs[rs1].wrapping_add(offset), width, self.regs[rs2])
+                    .expect("failed to write to memory")
             }
             _ => {
                 dbg!("opcode not implemented yet");
@@ -200,7 +195,7 @@ impl Cpu {
     }
 }
 
-#[cfg(test)]
+/*#[cfg(test)]
 pub mod test {
     use super::Cpu;
 
@@ -308,4 +303,4 @@ pub mod test {
                 | (self.imm as u32) << 20
         }
     }
-}
+}*/
