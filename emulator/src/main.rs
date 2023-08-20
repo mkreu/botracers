@@ -16,9 +16,12 @@ fn main() -> io::Result<()> {
     }
     let code = fs::read(&args[1])?;
 
-    let mut cpu = Cpu::new(code);
+    let (dram, entry) = Dram::new(code);
 
-    while cpu.pc < cpu.dram.dram.len() as u32 {
+
+    let mut cpu = Cpu::new(dram, entry);
+
+    while cpu.pc < cpu.dram.dram.len() as u32 + DRAM_BASE {
         // 1. Fetch.
         let inst = cpu.fetch();
 
