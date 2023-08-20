@@ -1,3 +1,5 @@
+use std::{thread::{Thread, self}, time::Duration};
+
 use tracing::{trace, debug};
 
 use crate::dram::Dram;
@@ -28,6 +30,7 @@ impl Cpu {
         return self.dram.load(self.pc, 32).unwrap();
     }
     pub fn execute(&mut self, inst: u32) {
+        thread::sleep(Duration::from_millis(200));
         let opcode = inst & 0x7f;
         let funct3 = (inst >> 12) & 0x7;
         let rd = ((inst >> 7) & 0x1f) as usize;
@@ -36,7 +39,7 @@ impl Cpu {
 
         self.regs[0] = 0; // Simulate hard wired x0
 
-        trace!("op: {opcode:x}; f3: {funct3:x}");
+        trace!("pc: {:x}, op: {opcode:x}; f3: {funct3:x}", self.pc);
 
         match opcode {
             0x03 => {
@@ -252,8 +255,12 @@ impl Cpu {
                 }
             }
             0x67 => {
-                // ebreak / ecall
-                panic!("execution finished");
+                // jalr
+                //panic!("jalr");
+                let imm = ((inst & 0xfff0_0000) as i32 >> 20) as u32;
+                debug!("jalr {imm}({rs1})");
+                self.regs[rd] = self.pc.wrapping_add(4);
+                self.pc = self.regs[rs1].wrapping_add(imm) & 0xffff_fffe
             }
             0x6f => {
                 debug!("jal");
@@ -267,29 +274,6 @@ impl Cpu {
                     | ((inst >> 20) & 0x7fe); // imm[10:1]
 
                 self.pc = self.pc.wrapping_add(imm).wrapping_sub(4);
-            }
-            0x67 => {
-                // jalr
-                let imm = ((inst & 0xfff0_0000) as i32 >> 20) as u32;
-                debug!("jalr {imm}({rs1})");
-                self.regs[rd] = self.pc.wrapping_add(4);
-                self.pc = self.regs[rs1].wrapping_add(imm) & 0xffff_fffe
-            }
-            0x23 => {
-                // sw
-                let offset = ((inst & 0xfe00_0000) as i32 >> 20) as u32 | (inst & 0x0000_0f80) >> 7;
-                let width = match funct3 {
-                    0x0 => 8,
-                    0x1 => 16,
-                    0x2 => 32,
-                    _ => {
-                        panic!("funct3 {funct3:x} invalid for opcode {opcode:x}");
-                    }
-                };
-                debug!("s({funct3:x}) {rs2} {offset}({rs1})");
-                self.dram
-                    .store(self.regs[rs1].wrapping_add(offset), width, self.regs[rs2])
-                    .expect("failed to write to memory")
             }
             _ => {
                 dbg!("opcode not implemented yet");
