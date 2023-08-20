@@ -62,6 +62,31 @@ impl Cpu {
         trace!("op: {opcode:x}; f3: {funct3:x}");
 
         match opcode {
+            0x03 => {
+                // load
+                // imm[11:0] = inst[31:20]
+                let imm = (inst as i32 >> 20) as u32;
+                match funct3 {
+                    0x0 => {
+                        self.regs[rd] = ((self.dram.load(rs1 as u32 + imm, 8).unwrap() << 24) as i32 >> 24) as u32;
+                    },
+                    0x1 => {
+                        self.regs[rd] = ((self.dram.load(rs1 as u32 + imm, 16).unwrap() << 16) as i32 >> 16) as u32;
+                    },
+                    0x2 => {
+                        self.regs[rd] = self.dram.load(rs1 as u32 + imm, 32).unwrap();
+                    }
+                    0x4 => {
+                        self.regs[rd] = self.dram.load(rs1 as u32 + imm, 8).unwrap() << 24;
+                    }
+                    0x5 => {
+                        self.regs[rd] = self.dram.load(rs1 as u32 + imm, 32).unwrap() << 16;
+                    }
+                    _ => {
+                        panic!("invalid funct3")
+                    }
+                }
+            }
             0x13 => {
                 let imm = ((inst & 0xfff00000) as i32 >> 20) as u32;
                 let shamt = rs2 as u32;
@@ -113,9 +138,10 @@ impl Cpu {
                 }
             }
             0x23 => {
+                // store
                 // imm[11:5|4:0] = inst[31:25|11:7]
-                let imm = ((inst as i32 >> 20) as u32) // imm[11:5]
-                    | ((inst >> 7) & 0x1f); // imm[4:0]
+                let imm = (((inst & 0xfe00_0000) as i32 >> 20) as u32) // imm[11:5]
+                    | (((inst & 0xf ) >> 7) & 0x1f); // imm[4:0]
                 match funct3 {
                     0x0 => {
                         self.dram.store(rs1 as u32 + imm, 8, rs2 as u32).unwrap();
@@ -199,6 +225,53 @@ impl Cpu {
                 // apcui
                 let imm = inst & 0xfffff000;
                 self.regs[rd] = self.pc.wrapping_add(imm);
+            }
+            0x63 => {
+                // branch
+                // imm[12|10:5|4:1|11] = inst[31|30:25|11:8|7]
+                let imm = (((inst & 0x8000_0000) as i32 >> 19) as u32) // imm[12]
+                    | (inst & 0x7e000 >> 20)  // imm[10:5]
+                    | ((inst >> 7) & 0x1e) // imm[4:1]
+                    | ((inst << 4) & 0x800); // imm[11]
+                match funct3 {
+                    0x0 => {
+                        if self.regs[rs1] == self.regs[rs2] {
+                            self.pc = self.pc.wrapping_add(imm);
+                        }
+                    },
+                    0x1 => {
+                        if self.regs[rs1] != self.regs[rs2] {
+                            self.pc = self.pc.wrapping_add(imm);
+                        }
+                    },
+                    0x3 => {
+                        if (self.regs[rs1] as i32) < (self.regs[rs2] as i32){
+                            self.pc = self.pc.wrapping_add(imm);
+                        }
+                    }
+                    0x4 => {
+                        if (self.regs[rs1] as i32) >= (self.regs[rs2] as i32){
+                            self.pc = self.pc.wrapping_add(imm);
+                        }
+                    }
+                    0x6 => {
+                        if self.regs[rs1] >= self.regs[rs2] {
+                            self.pc = self.pc.wrapping_add(imm);
+                        }
+                    }
+                    0x7 => {
+                        if self.regs[rs1] < self.regs[rs2] {
+                            self.pc = self.pc.wrapping_add(imm);
+                        }
+                    }
+                    _ => {
+                        panic!("invalid funct3")
+                    }
+                }
+            }
+            0x67 => {
+                // ebreak / ecall
+                panic!("execution finished");
             }
             0x6f => {
                 //jal
