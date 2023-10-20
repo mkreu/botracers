@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use tracing::{debug, trace};
+use tracing::{debug, trace, warn};
 
 use crate::dram::Dram;
 
@@ -232,37 +232,42 @@ impl Cpu {
                 // branch
                 // imm[12|10:5|4:1|11] = inst[31|30:25|11:8|7]
                 let imm = (((inst & 0x8000_0000) as i32 >> 19) as u32) // imm[12]
-                    | (inst & 0x7e000 >> 20)  // imm[10:5]
+                    | (inst & 0x7e00_0000) >> 20  // imm[10:5]
                     | ((inst >> 7) & 0x1e) // imm[4:1]
                     | ((inst << 4) & 0x800); // imm[11]
+                warn!("{inst:b}");
+                warn!("{imm:b}");
+                //111111011110
+                //000000110000
+                debug!("branch");
                 match funct3 {
                     0x0 => {
                         if self.regs[rs1] == self.regs[rs2] {
-                            self.pc = self.pc.wrapping_add(imm);
+                            self.pc = self.pc.wrapping_add(imm).wrapping_sub(4);
                         }
                     }
                     0x1 => {
                         if self.regs[rs1] != self.regs[rs2] {
-                            self.pc = self.pc.wrapping_add(imm);
-                        }
-                    }
-                    0x3 => {
-                        if (self.regs[rs1] as i32) < (self.regs[rs2] as i32) {
-                            self.pc = self.pc.wrapping_add(imm);
+                            self.pc = self.pc.wrapping_add(imm).wrapping_sub(4);
                         }
                     }
                     0x4 => {
+                        if (self.regs[rs1] as i32) < (self.regs[rs2] as i32) {
+                            self.pc = self.pc.wrapping_add(imm).wrapping_sub(4);
+                        }
+                    }
+                    0x5 => {
                         if (self.regs[rs1] as i32) >= (self.regs[rs2] as i32) {
-                            self.pc = self.pc.wrapping_add(imm);
+                            self.pc = self.pc.wrapping_add(imm).wrapping_sub(4);
                         }
                     }
                     0x6 => {
-                        if self.regs[rs1] >= self.regs[rs2] {
-                            self.pc = self.pc.wrapping_add(imm);
+                        if self.regs[rs1] < self.regs[rs2] {
+                            self.pc = self.pc.wrapping_add(imm).wrapping_sub(4);
                         }
                     }
                     0x7 => {
-                        if self.regs[rs1] < self.regs[rs2] {
+                        if self.regs[rs1] >= self.regs[rs2] {
                             self.pc = self.pc.wrapping_add(imm);
                         }
                     }

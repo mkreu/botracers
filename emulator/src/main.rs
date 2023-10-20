@@ -26,6 +26,9 @@ fn main() -> io::Result<()> {
 
     let mut cpu = Cpu::new(dram, entry);
 
+    info!("{}", cpu.dram.dram.len());
+    info!("{:x}", cpu.dram.dram.len());
+
     while cpu.pc < cpu.dram.dram.len() as u32 + DRAM_BASE {
         // 1. Fetch.
         let inst = cpu.fetch();
@@ -41,6 +44,7 @@ fn main() -> io::Result<()> {
         //debug!("sp: {:x}", cpu.regs[2]);
         //debug!("ra: {:x}", cpu.regs[1]);
     }
+    debug!("exited loop ?? {:x}", cpu.pc);
     Ok(())
 }
 
