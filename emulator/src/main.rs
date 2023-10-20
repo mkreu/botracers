@@ -1,14 +1,17 @@
 use cpu::Cpu;
 use dram::{Dram, DRAM_BASE};
-use tracing::metadata::LevelFilter;
 use std::env;
 use std::{fs, io};
+use tracing::metadata::LevelFilter;
+use tracing::{debug, info};
 
 mod cpu;
 mod dram;
 
 fn main() -> io::Result<()> {
-    tracing_subscriber::FmtSubscriber::builder().with_max_level(LevelFilter::TRACE).init();
+    tracing_subscriber::FmtSubscriber::builder()
+        .with_max_level(LevelFilter::DEBUG)
+        .init();
 
     let args: Vec<String> = env::args().collect();
 
@@ -17,8 +20,9 @@ fn main() -> io::Result<()> {
     }
     let code = fs::read(&args[1])?;
 
-    let (dram, entry) = Dram::new(code);
+    let (mut dram, entry) = Dram::new(code);
 
+    dram.store(0x400, 32, 4).unwrap();
 
     let mut cpu = Cpu::new(dram, entry);
 
@@ -32,6 +36,10 @@ fn main() -> io::Result<()> {
         // 3. Decode.
         // 4. Execute.
         cpu.execute(inst);
+
+        info!("{}", cpu.dram.load(0x400, 32).unwrap());
+        //debug!("sp: {:x}", cpu.regs[2]);
+        //debug!("ra: {:x}", cpu.regs[1]);
     }
     Ok(())
 }

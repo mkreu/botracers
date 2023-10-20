@@ -1,6 +1,9 @@
-use std::{thread::{Thread, self}, time::Duration};
+use std::{
+    thread::{self},
+    time::Duration,
+};
 
-use tracing::{trace, debug};
+use tracing::{debug, trace};
 
 use crate::dram::Dram;
 
@@ -17,12 +20,12 @@ impl Cpu {
             pc: entry,
             dram: dram,
         };
-        cpu.regs[2] = 128; // ehh i dont know how stack pointer work...
+        cpu.regs[2] = 0x100; // ehh i dont know how stack pointer work...
         return cpu;
     }
     #[allow(dead_code)]
     pub fn fetch(&self) -> u32 {
-        let index = self.pc as usize;
+        //let index = self.pc as usize;
         //return (self.dram.dram[index] as u32)
         //    | ((self.dram.dram[index + 1] as u32) << 8)
         //    | ((self.dram.dram[index + 2] as u32) << 16)
@@ -39,7 +42,7 @@ impl Cpu {
 
         self.regs[0] = 0; // Simulate hard wired x0
 
-        trace!("pc: {:x}, op: {opcode:x}; f3: {funct3:x}", self.pc);
+        debug!("pc(-4): {:x}, op: {opcode:x}; f3: {funct3:x}", self.pc - 4);
 
         match opcode {
             0x03 => {
@@ -48,19 +51,26 @@ impl Cpu {
                 let imm = (inst as i32 >> 20) as u32;
                 match funct3 {
                     0x0 => {
-                        self.regs[rd] = ((self.dram.load(rs1 as u32 + imm, 8).unwrap() << 24) as i32 >> 24) as u32;
-                    },
+                        self.regs[rd] = ((self.dram.load(self.regs[rs1] as u32 + imm, 8).unwrap()
+                            << 24) as i32
+                            >> 24) as u32;
+                    }
                     0x1 => {
-                        self.regs[rd] = ((self.dram.load(rs1 as u32 + imm, 16).unwrap() << 16) as i32 >> 16) as u32;
-                    },
+                        self.regs[rd] = ((self.dram.load(self.regs[rs1] as u32 + imm, 16).unwrap()
+                            << 16) as i32
+                            >> 16) as u32;
+                    }
                     0x2 => {
-                        self.regs[rd] = self.dram.load(rs1 as u32 + imm, 32).unwrap();
+                        debug!("lw {rd} {imm}({rs1})");
+                        self.regs[rd] = self.dram.load(self.regs[rs1] as u32 + imm, 32).unwrap();
                     }
                     0x4 => {
-                        self.regs[rd] = self.dram.load(rs1 as u32 + imm, 8).unwrap() << 24;
+                        self.regs[rd] =
+                            self.dram.load(self.regs[rs1] as u32 + imm, 8).unwrap() << 24;
                     }
                     0x5 => {
-                        self.regs[rd] = self.dram.load(rs1 as u32 + imm, 32).unwrap() << 16;
+                        self.regs[rd] =
+                            self.dram.load(self.regs[rs1] as u32 + imm, 16).unwrap() << 16;
                     }
                     _ => {
                         panic!("invalid funct3")
@@ -123,16 +133,23 @@ impl Cpu {
                 // store
                 // imm[11:5|4:0] = inst[31:25|11:7]
                 let imm = (((inst & 0xfe00_0000) as i32 >> 20) as u32) // imm[11:5]
-                    | (((inst & 0xf ) >> 7) & 0x1f); // imm[4:0]
+                    | ((inst >> 7) & 0x1f); // imm[4:0]
                 match funct3 {
                     0x0 => {
-                        self.dram.store(rs1 as u32 + imm, 8, rs2 as u32).unwrap();
-                    },
+                        self.dram
+                            .store(self.regs[rs1] + imm, 8, self.regs[rs2])
+                            .unwrap();
+                    }
                     0x1 => {
-                        self.dram.store(rs1 as u32 + imm, 16, rs2 as u32).unwrap();
-                    },
+                        self.dram
+                            .store(self.regs[rs1] + imm, 16, self.regs[rs2])
+                            .unwrap();
+                    }
                     0x2 => {
-                        self.dram.store(rs1 as u32 + imm, 32, rs2 as u32).unwrap();
+                        debug!("sw {rs2} {imm}({rs1})");
+                        self.dram
+                            .store(self.regs[rs1] + imm, 32, self.regs[rs2])
+                            .unwrap();
                     }
                     _ => {
                         panic!("invalid funct3")
@@ -206,10 +223,10 @@ impl Cpu {
                 self.regs[rd] = imm;
             }
             0x17 => {
-                // apcui
+                // auipc
                 let imm = inst & 0xfffff000;
-                debug!("apcui {rd} {imm}");
-                self.regs[rd] = self.pc.wrapping_add(imm);
+                debug!("auipc {rd} {imm}");
+                self.regs[rd] = self.pc.wrapping_add(imm).wrapping_sub(4);
             }
             0x63 => {
                 // branch
@@ -223,19 +240,19 @@ impl Cpu {
                         if self.regs[rs1] == self.regs[rs2] {
                             self.pc = self.pc.wrapping_add(imm);
                         }
-                    },
+                    }
                     0x1 => {
                         if self.regs[rs1] != self.regs[rs2] {
                             self.pc = self.pc.wrapping_add(imm);
                         }
-                    },
+                    }
                     0x3 => {
-                        if (self.regs[rs1] as i32) < (self.regs[rs2] as i32){
+                        if (self.regs[rs1] as i32) < (self.regs[rs2] as i32) {
                             self.pc = self.pc.wrapping_add(imm);
                         }
                     }
                     0x4 => {
-                        if (self.regs[rs1] as i32) >= (self.regs[rs2] as i32){
+                        if (self.regs[rs1] as i32) >= (self.regs[rs2] as i32) {
                             self.pc = self.pc.wrapping_add(imm);
                         }
                     }
@@ -256,11 +273,12 @@ impl Cpu {
             }
             0x67 => {
                 // jalr
-                //panic!("jalr");
                 let imm = ((inst & 0xfff0_0000) as i32 >> 20) as u32;
-                debug!("jalr {imm}({rs1})");
-                self.regs[rd] = self.pc.wrapping_add(4);
-                self.pc = self.regs[rs1].wrapping_add(imm) & 0xffff_fffe
+                let immi = imm as i32;
+                debug!("jalr {immi}({rs1})");
+                let back_addr = self.pc;
+                self.pc = self.regs[rs1].wrapping_add(imm) & 0xffff_fffe;
+                self.regs[rd] = back_addr
             }
             0x6f => {
                 debug!("jal");

@@ -1,7 +1,7 @@
 //! The dram module contains a dram structure and implementation for dram access.
 
-use tracing::{trace, debug};
 use elf::{abi::PT_LOAD, endian::LittleEndian, ElfBytes};
+use tracing::{debug, trace};
 
 /// Default dram size (128MiB).
 pub const DRAM_SIZE: u32 = 1024 * 1024 * 128;
@@ -28,11 +28,11 @@ impl Dram {
             .filter(|phdr| phdr.p_type == PT_LOAD)
             .collect::<Vec<_>>();
 
-        let dram_size = all_load_phdrs
-            .iter()
-            .map(|phdr| phdr.p_vaddr - DRAM_BASE as u64 + phdr.p_memsz)
-            .max()
-            .unwrap();
+        //let dram_size = all_load_phdrs
+        //    .iter()
+        //    .map(|phdr| phdr.p_vaddr - DRAM_BASE as u64 + phdr.p_memsz)
+        //    .max()
+        //    .unwrap();
 
         //let mut mem = vec![0u8; dram_size as usize];
         let mut mem = vec![0u8; DRAM_SIZE as usize];
@@ -49,12 +49,12 @@ impl Dram {
                 .copy_from_slice(&code[offset..offset + filesz]);
         }
 
-        let entry = elf.ehdr.e_entry;
+        let entry = elf.ehdr.e_entry as u32 - DRAM_BASE;
         debug!("entry: {entry:x}");
         let mut dram = vec![0; DRAM_SIZE as usize];
         dram.splice(..code.len(), code.iter().cloned());
 
-        (Self { dram: mem }, elf.ehdr.e_entry as u32 - DRAM_BASE)
+        (Self { dram: mem }, entry)
     }
 
     /// Load bytes from the little-endiam dram.
