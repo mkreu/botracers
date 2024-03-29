@@ -1,4 +1,4 @@
-use color_eyre::eyre::{self, bail, Context};
+use color_eyre::eyre::{self, Context};
 use color_eyre::Result;
 use crossterm::{
     event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
@@ -20,7 +20,6 @@ use std::{
 
 use crate::cpu::instruction::Instruction;
 use crate::cpu::Cpu;
-use crate::dram::DRAM_SIZE;
 
 use self::widgets::{CpuWidget, DramWidget};
 
@@ -81,7 +80,7 @@ impl App {
 
                 // 3. Decode.
                 // 4. Execute.
-                cpu.execute(inst);
+                cpu.execute(Instruction::parse(inst));
             }
             _ => {}
         }
