@@ -113,15 +113,13 @@ impl Cpu {
                     self.regs[rd] = self
                         .dram
                         .load(self.regs[rs1].wrapping_add_signed(imm), 8)
-                        .unwrap()
-                        << 24;
+                        .unwrap();
                 }
                 instruction::IFunct::LHU => {
                     self.regs[rd] = self
                         .dram
                         .load(self.regs[rs1].wrapping_add_signed(imm), 16)
-                        .unwrap()
-                        << 16;
+                        .unwrap();
                 }
                 instruction::IFunct::ADDI => {
                     self.regs[rd] = self.regs[rs1].wrapping_add_signed(imm);

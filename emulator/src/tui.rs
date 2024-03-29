@@ -21,7 +21,7 @@ use std::{
 use crate::cpu::instruction::Instruction;
 use crate::cpu::Cpu;
 
-use self::widgets::{CpuWidget, DramWidget};
+use self::widgets::{CpuWidget, DramWidget, GameWidget};
 
 mod widgets;
 
@@ -36,11 +36,16 @@ pub(crate) fn run(cpu: Cpu) -> Result<()> {
 pub struct App {
     cpu: Cpu,
     exit: bool,
+    pos: Vec<(f64, f64)>,
 }
 
 impl App {
     pub fn new(cpu: Cpu) -> Self {
-        Self { cpu, exit: false }
+        Self {
+            cpu,
+            exit: false,
+            pos: vec![(10.0, 10.0)],
+        }
     }
 
     /// runs the application's main loop until the user quits
@@ -72,6 +77,8 @@ impl App {
             KeyCode::Char('q') => self.exit(),
             KeyCode::Enter => {
                 let cpu = &mut self.cpu;
+
+                cpu.dram.store(4, 32, 0).unwrap();
                 // 1. Fetch.
                 let inst = cpu.fetch();
 
@@ -81,6 +88,16 @@ impl App {
                 // 3. Decode.
                 // 4. Execute.
                 cpu.execute(Instruction::parse(inst));
+
+                let cmd = cpu.dram.load(4, 32).unwrap();
+                let (x, y) = self.pos.last().unwrap();
+                match cmd {
+                    1 => self.pos.push((x - 1.0, *y)),
+                    2 => self.pos.push((*x, y + 1.0)),
+                    3 => self.pos.push((x + 1.0, *y)),
+                    4 => self.pos.push((*x, y - 1.0)),
+                    _ => {}
+                }
             }
             _ => {}
         }
@@ -98,17 +115,21 @@ impl Widget for &App {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let layout = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(33), Constraint::Percentage(33), Constraint::Percentage(33)])
+            .constraints([
+                Constraint::Percentage(25),
+                Constraint::Percentage(25),
+                Constraint::Percentage(50),
+            ])
             .split(area);
 
-        let title = Title::from("Risc-V Cpu Simulator".bold());
+        let title = Title::from(" CPU ".bold());
         let instructions = Title::from(Line::from(vec![
             " Step ".into(),
             "<Enter>".blue().bold(),
             " Quit ".into(),
             "<Q> ".blue().bold(),
         ]));
-        let block = Block::default()
+        let cpu_block = Block::default()
             .title(title.alignment(Alignment::Center))
             .title(
                 instructions
@@ -118,22 +139,29 @@ impl Widget for &App {
             .borders(Borders::ALL)
             .border_set(border::THICK);
 
+        let cpu_layout = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(2), Constraint::Length(32)])
+            .margin(1)
+            .spacing(1)
+            .split(layout[0]);
+
         let pc_text = Text::from(vec![
-            Line::from(vec!["PC: ".into(), format!("0x{:x}",self.cpu.pc).yellow()]),
+            Line::from(vec!["PC: ".into(), format!("0x{:x}", self.cpu.pc).yellow()]),
             Line::from(format!("Inst: {:?}", Instruction::parse(self.cpu.fetch()))),
         ]);
 
         Paragraph::new(pc_text)
             .centered()
-            .block(block)
-            .render(layout[0], buf);
+            .render(cpu_layout[0], buf);
 
-        CpuWidget::new(&self.cpu).render(layout[1], buf);
-        DramWidget::new(" Stack ", &self.cpu.dram, self.cpu.regs[2]).render(layout[2], buf);
+        cpu_block.render(layout[0], buf);
 
+        CpuWidget::new(&self.cpu).render(cpu_layout[1], buf);
+        DramWidget::new(" Dram ", &self.cpu.dram, self.cpu.regs[2]).render(layout[1], buf);
+        GameWidget::new(&self.pos).render(layout[2], buf);
     }
 }
-
 
 /// A type alias for the terminal type used in this application
 pub type Tui = Terminal<CrosstermBackend<Stdout>>;

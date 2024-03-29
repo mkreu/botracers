@@ -1,6 +1,7 @@
 use ratatui::prelude::*;
 use ratatui::symbols::border;
 use ratatui::widgets::block::{Position, Title};
+use ratatui::widgets::canvas::{Canvas, Points};
 use ratatui::widgets::{Block, Borders, Paragraph, Widget};
 
 use crate::cpu::Cpu;
@@ -21,23 +22,6 @@ impl Widget for CpuWidget<'_> {
     where
         Self: Sized,
     {
-        let title = Title::from(" Cpu Registers ".bold());
-        let instructions = Title::from(Line::from(vec![
-            " Step ".into(),
-            "<Enter>".blue().bold(),
-            " Quit ".into(),
-            "<Q> ".blue().bold(),
-        ]));
-        let block = Block::default()
-            .title(title.alignment(Alignment::Center))
-            .title(
-                instructions
-                    .alignment(Alignment::Center)
-                    .position(Position::Bottom),
-            )
-            .borders(Borders::ALL)
-            .border_set(border::THICK);
-
         let pc_text = Text::from(
             self.cpu
                 .regs
@@ -55,10 +39,7 @@ impl Widget for CpuWidget<'_> {
                 .collect::<Vec<Line>>(),
         );
 
-        Paragraph::new(pc_text)
-            .centered()
-            .block(block)
-            .render(area, buf);
+        Paragraph::new(pc_text).centered().render(area, buf);
     }
 }
 fn reg_name(reg: usize) -> &'static str {
@@ -107,7 +88,11 @@ pub struct DramWidget<'a> {
 
 impl<'a> DramWidget<'a> {
     pub fn new(name: &'static str, dram: &'a Dram, start_offset: u32) -> Self {
-        Self { name, dram, start_offset }
+        Self {
+            name,
+            dram,
+            start_offset,
+        }
     }
 }
 
@@ -141,7 +126,12 @@ impl Widget for DramWidget<'_> {
                 .skip(self.start_offset as usize / 4)
                 .take(area.height as usize)
                 .map(|(i, chunk)| match chunk {
-                    &[b0, b1, b2, b3] => format!("{:x}: {b0:02x} {b1:02x} {b2:02x} {b3:02x} {:>10}", i*4, b0 as u32 | (b1 as u32) << 8 | (b2 as u32) << 16 | (b3 as u32) << 24).into(),
+                    &[b0, b1, b2, b3] => format!(
+                        "{:x}: {b0:02x} {b1:02x} {b2:02x} {b3:02x} {:>10}",
+                        i * 4,
+                        b0 as u32 | (b1 as u32) << 8 | (b2 as u32) << 16 | (b3 as u32) << 24
+                    )
+                    .into(),
                     _ => unreachable!(),
                 })
                 .collect::<Vec<Line>>(),
@@ -151,5 +141,50 @@ impl Widget for DramWidget<'_> {
             .centered()
             .block(block)
             .render(area, buf);
+    }
+}
+pub struct GameWidget<'a> {
+    pos: &'a [(f64, f64)],
+}
+
+impl<'a> GameWidget<'a> {
+    pub fn new(pos: &'a [(f64, f64)]) -> Self {
+        Self { pos }
+    }
+}
+impl Widget for GameWidget<'_> {
+    fn render(self, area: Rect, buf: &mut Buffer)
+    where
+        Self: Sized,
+    {
+        let title = Title::from(" Game ".bold());
+        let instructions = Title::from(Line::from(vec![
+            " Step ".into(),
+            "<Enter>".blue().bold(),
+            " Quit ".into(),
+            "<Q> ".blue().bold(),
+        ]));
+        let block = Block::default()
+            .title(title.alignment(Alignment::Center))
+            .title(
+                instructions
+                    .alignment(Alignment::Center)
+                    .position(Position::Bottom),
+            )
+            .borders(Borders::ALL)
+            .border_set(border::THICK);
+
+        let canvas = Canvas::default()
+            .block(block)
+            .y_bounds([0.0, 30.0])
+            .x_bounds([0.0, 30.0])
+            .marker(Marker::Dot)
+            .paint(|ctx| {
+                ctx.draw(&Points {
+                    coords: &self.pos,
+                    color: Color::Blue,
+                })
+            });
+        canvas.render(area, buf)
     }
 }

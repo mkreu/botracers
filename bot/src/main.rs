@@ -10,16 +10,34 @@ fn panic(_panic: &PanicInfo<'_>) -> ! {
 
 pub const DRAM_SIZE: u32 = 1024 * 64;
 
+pub enum Direction {
+    NONE,
+    LEFT,
+    UP,
+    RIGHT,
+    DOWN,
+}
+
+#[inline(never)]
+fn cmd(dir: Direction) {
+    let dir = dir as u32;
+    unsafe { ptr::write(4 as *mut u32, dir) }
+}
+
 #[export_name = "main"]
 fn main() -> ! {
-    let addr = (DRAM_SIZE - 4) as *mut u32;
-    let mut foo = unsafe {ptr::read(addr)};
-
-    foo = foo +3;
-    unsafe {ptr::write(addr, foo)}
-    foo = foo*5;
-    unsafe {ptr::write(addr, foo)}
-
-    panic!();
-    //loop {}
+    loop {
+        for _ in 0..5 {
+            cmd(Direction::LEFT)
+        }
+        for _ in 0..5 {
+            cmd(Direction::DOWN)
+        }
+        for _ in 0..5 {
+            cmd(Direction::RIGHT)
+        }
+        for _ in 0..5 {
+            cmd(Direction::UP)
+        }
+    }
 }
