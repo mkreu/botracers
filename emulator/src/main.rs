@@ -10,7 +10,24 @@ mod cpu;
 mod dram;
 mod tui;
 fn main() -> Result<()> {
-    tui::run()
+    //tracing_subscriber::FmtSubscriber::builder()
+    //    .with_max_level(LevelFilter::DEBUG)
+    //    .init();
+
+    let args: Vec<String> = env::args().collect();
+
+    if args.len() != 2 {
+        panic!("Usage: emulator <filename>");
+    }
+    let code = fs::read(&args[1])?;
+
+    let (mut dram, entry) = Dram::new(code);
+
+    dram.store(0x400, 32, 4).unwrap();
+
+    let mut cpu = Cpu::new(dram, entry);
+
+    tui::run(cpu)
 }
 
 fn run_cpu() -> io::Result<()> {

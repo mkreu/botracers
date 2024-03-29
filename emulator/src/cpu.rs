@@ -7,6 +7,10 @@ use tracing::{debug, warn};
 
 use crate::dram::Dram;
 
+pub mod instruction;
+
+
+#[derive(Debug)]
 pub struct Cpu {
     pub regs: [u32; 32],
     pub pc: u32,
@@ -33,7 +37,7 @@ impl Cpu {
         return self.dram.load(self.pc, 32).unwrap();
     }
     pub fn execute(&mut self, inst: u32) {
-        thread::sleep(Duration::from_millis(200));
+        //thread::sleep(Duration::from_millis(200));
         let opcode = inst & 0x7f;
         let funct3 = (inst >> 12) & 0x7;
         let rd = ((inst >> 7) & 0x1f) as usize;
