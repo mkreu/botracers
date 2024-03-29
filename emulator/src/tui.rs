@@ -20,6 +20,11 @@ use std::{
 
 use crate::cpu::instruction::Instruction;
 use crate::cpu::Cpu;
+use crate::dram::DRAM_BASE;
+
+use self::widgets::{CpuWidget, DramWidget};
+
+mod widgets;
 
 pub(crate) fn run(cpu: Cpu) -> Result<()> {
     let mut terminal = init()?;
@@ -94,7 +99,7 @@ impl Widget for &App {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let layout = Layout::default()
             .direction(Direction::Horizontal)
-            .constraints([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .constraints([Constraint::Percentage(33), Constraint::Percentage(33), Constraint::Percentage(33)])
             .split(area);
 
         let title = Title::from("Risc-V Cpu Simulator".bold());
@@ -124,38 +129,12 @@ impl Widget for &App {
             .block(block)
             .render(layout[0], buf);
 
-        let title = Title::from("Risc-V Cpu Simulator".bold());
-        let instructions = Title::from(Line::from(vec![
-            " Step ".into(),
-            "<Enter>".blue().bold(),
-            " Quit ".into(),
-            "<Q> ".blue().bold(),
-        ]));
-        let block = Block::default()
-            .title(title.alignment(Alignment::Center))
-            .title(
-                instructions
-                    .alignment(Alignment::Center)
-                    .position(Position::Bottom),
-            )
-            .borders(Borders::ALL)
-            .border_set(border::THICK);
+        CpuWidget::new(&self.cpu).render(layout[1], buf);
+        DramWidget::new(&self.cpu.dram, 0x400 + DRAM_BASE).render(layout[2], buf);
 
-        let pc_text = Text::from(
-            self.cpu
-                .regs
-                .iter()
-                .enumerate()
-                .map(|(i, val)| format!("{i:02}: {:>10}", *val as i32).into())
-                .collect::<Vec<Line>>(),
-        );
-
-        Paragraph::new(pc_text)
-            .centered()
-            .block(block)
-            .render(layout[1], buf);
     }
 }
+
 
 /// A type alias for the terminal type used in this application
 pub type Tui = Terminal<CrosstermBackend<Stdout>>;
