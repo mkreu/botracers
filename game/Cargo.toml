@@ -17,4 +17,5 @@ opt-level = 3
 [dependencies]
 bevy = "0.13.1"
 bevy_rapier2d = "0.25.0"
+iyes_perf_ui = "0.2.3"
 noise = "0.9.0"

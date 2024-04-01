@@ -1,19 +1,16 @@
 use std::f32::consts::PI;
 
 use bevy::{
-    diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
+    diagnostic::FrameTimeDiagnosticsPlugin,
     prelude::*,
     sprite::{MaterialMesh2dBundle, Mesh2dHandle},
 };
+use iyes_perf_ui::{PerfUiCompleteBundle, PerfUiPlugin};
 use noise::NoiseFn;
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins)
-        .add_plugins((
-            FrameTimeDiagnosticsPlugin::default(),
-            LogDiagnosticsPlugin::default(),
-        ))
+        .add_plugins((DefaultPlugins, FrameTimeDiagnosticsPlugin, PerfUiPlugin))
         .add_systems(Startup, setup)
         .add_systems(Update, (draw_cursor, draw_collider /*draw_voxel_grid*/))
         .add_systems(FixedUpdate, (voxel_collision, robot_movement))
@@ -45,7 +42,7 @@ fn draw_collider(query: Query<&Transform, With<Robot>>, mut gizmos: Gizmos) {
     }
 }
 
-fn draw_voxel_grid(query: Query<(&Transform, &ViewVisibility), With<Voxel>>, mut gizmos: Gizmos) {
+fn draw_voxel_grid(query: Query<(&Transform, &InheritedVisibility), With<Voxel>>, mut gizmos: Gizmos) {
     for voxel in query.iter() {
         if voxel.1.get() {
             gizmos.rect_2d(
@@ -73,7 +70,7 @@ fn voxel_collision(
 
 fn robot_movement(
     mut robot_query: Query<&mut Transform, (With<Robot>, Without<Voxel>)>,
-    voxel_query: Query<(&Voxel, &Transform, &ViewVisibility), Without<Robot>>,
+    voxel_query: Query<(&Voxel, &Transform, &InheritedVisibility), Without<Robot>>,
     mut gizmos: Gizmos,
 ) {
     let mut robot = robot_query.single_mut();
@@ -83,7 +80,7 @@ fn robot_movement(
         .iter()
         .filter(|v| v.0.material == VoxelMaterial::ORE && v.2.get())
         .map(|v| v.1.translation.xy() - robot_pos)
-        .map(|dir| dir / (dir.length_squared()*dir.length_squared()).max(1.))
+        .map(|dir| dir / (dir.length_squared() * dir.length_squared()).max(1.))
         .inspect(|dir| gizmos.line_2d(robot_pos, robot_pos + *dir * 50000., Color::BLACK))
         .sum::<Vec2>();
 
@@ -92,7 +89,6 @@ fn robot_movement(
         robot.rotation = Quat::from_rotation_z(-dir.angle_between(Vec2::Y));
         robot.translation += Vec3::new(dir.x, dir.y, 0.0);
     }
-
 }
 
 fn manual_movement(
@@ -142,6 +138,8 @@ fn setup(
     mut materials: ResMut<Assets<ColorMaterial>>,
     mut gizmo_config: ResMut<GizmoConfigStore>,
 ) {
+    commands.spawn(PerfUiCompleteBundle::default());
+
     gizmo_config
         .config_mut::<DefaultGizmoConfigGroup>()
         .0
