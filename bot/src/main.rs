@@ -24,7 +24,7 @@ pub enum Direction {
     DOWN,
 }
 
-#[export_name = "main"]
+#[unsafe(export_name = "main")]
 fn main() -> ! {
     let (mut log, radar, driving) = devices::get_devices();
     driving.set_speed(10);
