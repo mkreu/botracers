@@ -4,7 +4,6 @@ use dram::Dram;
 pub mod cpu;
 pub mod dram;
 pub mod io;
-pub mod tui;
 
 pub struct CpuBuilder {}
 

@@ -18,14 +18,14 @@ use std::{
     panic,
 };
 
-use crate::cpu::instruction::Instruction;
-use crate::cpu::Cpu;
+use emulator_core::cpu::instruction::Instruction;
+use emulator_core::cpu::Cpu;
 
 use self::widgets::{CpuWidget, DramWidget, GameWidget};
 
 mod widgets;
 
-pub(crate) fn run(cpu: Cpu) -> Result<()> {
+pub fn run(cpu: Cpu) -> Result<()> {
     let mut terminal = init()?;
     App::new(cpu).run(&mut terminal)?;
     restore()?;

@@ -1,11 +1,12 @@
-use color_eyre::Result;
+use emulator_core as emulator;
+
 use emulator::cpu::instruction::Instruction;
 use emulator::cpu::Cpu;
 use emulator::CpuBuilder;
 use std::env;
 use std::fs;
 
-fn main() -> Result<()> {
+fn main() {
     //tracing_subscriber::FmtSubscriber::builder()
     //    .with_max_level(LevelFilter::DEBUG)
     //    .init();
@@ -15,13 +16,10 @@ fn main() -> Result<()> {
     if args.len() != 2 {
         panic!("Usage: emulator <filename>");
     }
-    let code = fs::read(&args[1])?;
+    let code = fs::read(&args[1]).unwrap();
     let cpu = CpuBuilder::default().build(&code);
 
     run_plain(cpu);
-
-    //tui::run(cpu)
-    Ok(())
 }
 
 fn run_plain(mut cpu: Cpu) {

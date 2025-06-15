@@ -12,6 +12,8 @@ use bevy::{
     utils::HashMap,
 };
 
+use emulator_core as emulator;
+
 use emulator::{
     cpu::{instruction::Instruction, Cpu},
     dram::{Dram, DRAM_SIZE},
@@ -22,8 +24,14 @@ pub struct EmulatorPlugin;
 impl Plugin for EmulatorPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, spawn_cpu);
-        app.add_systems(FixedUpdate, (cpu_system, io_read_system::<RadarDevice>, io_write_system::<DrivingDevice>));
-
+        app.add_systems(
+            FixedUpdate,
+            (
+                cpu_system,
+                io_read_system::<RadarDevice>,
+                io_write_system::<DrivingDevice>,
+            ),
+        );
     }
 }
 

@@ -4,8 +4,8 @@ use ratatui::widgets::block::{Position, Title};
 use ratatui::widgets::canvas::{Canvas, Points};
 use ratatui::widgets::{Block, Borders, Paragraph, Widget};
 
-use crate::cpu::Cpu;
-use crate::dram::Dram;
+use emulator_core::cpu::Cpu;
+use emulator_core::dram::Dram;
 
 pub struct CpuWidget<'a> {
     cpu: &'a Cpu,
