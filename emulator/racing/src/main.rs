@@ -57,12 +57,12 @@ fn setup(
         })
         .collect();
 
-    let spline = CubicCardinalSpline::new(0.5, control_points.clone())
+    let spline = CubicBSpline::new(control_points.clone())
         .to_curve_cyclic()
         .expect("Failed to create cyclic curve");
 
     // Generate track mesh
-    let track_mesh = create_track_mesh(&spline, 13.0, 1000);
+    let track_mesh = create_track_mesh(&spline, 12.0, 1000);
 
     commands.spawn((
         Mesh2d(meshes.add(track_mesh)),
@@ -71,7 +71,7 @@ fn setup(
     ));
 
     // Generate kerbs with vertex colors
-    let (inner_kerb, outer_kerb) = create_kerb_meshes(&spline, 13.0, 1000);
+    let (inner_kerb, outer_kerb) = create_kerb_meshes(&spline, 12.0, 1000);
 
     commands.spawn((
         Mesh2d(meshes.add(inner_kerb)),
