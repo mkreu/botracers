@@ -1,22 +1,26 @@
+use std::f32::consts::PI;
+
 use bevy::{
-    color::palettes::css::WHITE,
-    diagnostic::FrameTimeDiagnosticsPlugin,
-    input::mouse::MouseWheel,
-    math::{
-        cubic_splines::{CubicCardinalSpline, CubicCurve, CyclicCubicGenerator},
-        ops::tan,
-        vec2,
-    },
-    prelude::*,
+    color::palettes::css::WHITE, diagnostic::FrameTimeDiagnosticsPlugin, input::mouse::MouseWheel,
+    math::ops::tan, prelude::*,
 };
+use iyes_perf_ui::{PerfUiPlugin, prelude::PerfUiDefaultEntries};
 
 fn main() {
     App::new()
-        .add_plugins((DefaultPlugins, FrameTimeDiagnosticsPlugin::default()))
-        .add_systems(Startup, setup)
-        .add_systems(Update, (drive_car, update_camera, draw_gizmos))
+        .add_plugins((
+            DefaultPlugins,
+            FrameTimeDiagnosticsPlugin::default(),
+            PerfUiPlugin,
+        ))
+        .add_systems(Startup, (setup,))
+        .add_systems(Startup, set_default_zoom.after(setup))
+        .add_systems(FixedUpdate, drive_car)
+        .add_systems(Update, (update_camera, draw_gizmos))
         .run();
 }
+
+const WHEEL_BASE: f32 = 3.5;
 
 fn setup(
     mut commands: Commands,
@@ -24,6 +28,9 @@ fn setup(
     mut materials: ResMut<Assets<ColorMaterial>>,
     asset_server: Res<AssetServer>,
 ) {
+    commands.spawn(PerfUiDefaultEntries::default());
+
+    // Spawn a camera; we'll set a custom default zoom once in `set_default_zoom`.
     commands.spawn(Camera2d);
 
     // Green ground plane
@@ -33,24 +40,29 @@ fn setup(
         Transform::from_xyz(0.0, 0.0, -1.0),
     ));
 
-    // Create a simple oval racetrack using control points
-    let control_points = vec![
-        vec2(300.0, 0.0),
-        vec2(300.0, 200.0),
-        vec2(0.0, 300.0),
-        vec2(-300.0, 200.0),
-        vec2(-300.0, 0.0),
-        vec2(-300.0, -200.0),
-        vec2(0.0, -300.0),
-        vec2(300.0, -200.0),
-    ];
+    // Create a racetrack using control points loaded from `assets/spielberg.csv`.
+    // This will unwrap on errors as requested.
+    // Read the CSV file directly from the assets directory and unwrap on error.
+    let text = std::fs::read_to_string("racing/assets/spielberg.csv").unwrap();
 
-    let spline = CubicCardinalSpline::new(0.5, control_points)
+    let control_points: Vec<Vec2> = text
+        .lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            let mut parts = line.split(',');
+            let x = parts.next().unwrap().trim().parse::<f32>().unwrap() - 100.0;
+            let y = -parts.next().unwrap().trim().parse::<f32>().unwrap() + 100.0;
+            vec2(x, y)
+        })
+        .collect();
+
+    let spline = CubicCardinalSpline::new(0.5, control_points.clone())
         .to_curve_cyclic()
         .expect("Failed to create cyclic curve");
 
     // Generate track mesh
-    let track_mesh = create_track_mesh(&spline, 80.0, 100);
+    let track_mesh = create_track_mesh(&spline, 13.0, 1000);
 
     commands.spawn((
         Mesh2d(meshes.add(track_mesh)),
@@ -59,7 +71,7 @@ fn setup(
     ));
 
     // Generate kerbs with vertex colors
-    let (inner_kerb, outer_kerb) = create_kerb_meshes(&spline, 80.0, 100);
+    let (inner_kerb, outer_kerb) = create_kerb_meshes(&spline, 13.0, 1000);
 
     commands.spawn((
         Mesh2d(meshes.add(inner_kerb)),
@@ -73,10 +85,13 @@ fn setup(
         Transform::from_xyz(0.0, 0.0, 0.1),
     ));
 
+    let sprite_scale = Vec3::splat(0.02);
+
     // Spawn the player car with wheels as children
     commands
         .spawn((
-            Transform::from_xyz(300.0, 0.0, 1.0).with_scale(Vec3::splat(0.1)),
+            Transform::from_xyz(control_points[0].x, control_points[0].y, 1.0),
+            Visibility::default(),
             Car {
                 velocity: Vec2::ZERO,
                 angle: 0.0,
@@ -86,21 +101,39 @@ fn setup(
         .with_children(|parent| {
             parent.spawn((
                 Sprite::from_image(asset_server.load("blue_car_without_wheels.png")),
-                Transform::from_xyz(0.0, 100.0, 0.1),
+                Transform::from_xyz(0.0, 2.05, 0.1).with_scale(sprite_scale),
             ));
 
             // Front left wheel
             parent.spawn((
-                Sprite::from_image(asset_server.load("wheel.png")),
-                Transform::from_xyz(-38.0, 172.0, 0.1),
+                Transform::from_xyz(-0.75, 3.5, 0.1),
+                Visibility::default(),
                 Wheel,
-            ));
+            )).with_children(|parent| {
+                parent.spawn(
+                    (
+                        Sprite::from_image(asset_server.load("wheel.png")),
+                        Transform::default()
+                            .with_scale(sprite_scale)
+                            .with_rotation(Quat::from_rotation_z(0.0)),
+                    ),
+                );
+            });
             // Front right wheel
             parent.spawn((
-                Sprite::from_image(asset_server.load("wheel.png")),
-                Transform::from_xyz(38.0, 172.0, 0.1),
+                Transform::from_xyz(0.75, 3.5, 0.1),
+                Visibility::default(),
                 Wheel,
-            ));
+            )).with_children(|parent| {
+                parent.spawn(
+                    (
+                        Sprite::from_image(asset_server.load("wheel.png")),
+                        Transform::default()
+                            .with_scale(sprite_scale)
+                            .with_rotation(Quat::from_rotation_z(PI)),
+                    ),
+                );
+            });
         });
 }
 
@@ -162,7 +195,7 @@ fn create_kerb_meshes(
 ) -> (Mesh, Mesh) {
     let domain = spline.domain();
     let t_max = domain.end();
-    let kerb_width = 8.0;
+    let kerb_width = 0.5;
     let kerb_stripe_length = 1; // Number of segments per stripe color
 
     let mut inner_positions = Vec::new();
@@ -276,6 +309,18 @@ fn create_kerb_meshes(
     (inner_mesh, outer_mesh)
 }
 
+fn set_default_zoom(
+    mut camera_query: Query<&mut Projection, With<Camera2d>>,
+) {
+    let Ok(mut projection) = camera_query.single_mut() else {
+        return;
+    };
+
+    if let Projection::Orthographic(ref mut ortho) = *projection {
+        ortho.scale = 0.05;
+    }
+}
+
 #[derive(Component)]
 struct Car {
     velocity: Vec2,
@@ -292,16 +337,15 @@ fn drive_car(
     keyboard: Res<ButtonInput<KeyCode>>,
     time: Res<Time>,
 ) {
-    for (mut transform, mut car, children) in &mut car_query {
-        let dt = time.delta_secs();
+    let dt = time.delta_secs();
 
+    for (mut transform, mut car, children) in &mut car_query {
         // Car physics parameters
-        let acceleration = 150.0;
-        let braking = 200.0;
-        let max_speed = 500.0;
+        let acceleration = 50.0;
+        let braking = 70.0;
+        let max_speed = 100.0; // m/s
         let reverse_speed = 100.0;
         let drag: f32 = 0.99;
-        let wheel_base: f32 = 17.2;
 
         // Forward/Backward
         if keyboard.pressed(KeyCode::KeyW) {
@@ -323,9 +367,9 @@ fn drive_car(
 
         let mut wheel_angle = 0.0;
 
-        if car.speed.abs() > 0.1 {
-            let steer_factor = 1.0 / (1.0 + 0.07 * car.speed.abs());
-            let turn_radius = wheel_base / tan(steer_factor);
+        if car.speed.abs() > 0.3 {
+            let steer_factor = 0.5/ (1.0 + 0.01 * car.speed.abs()).powf(2.0);
+            let turn_radius = WHEEL_BASE / tan(steer_factor);
             let angular_velocity = car.speed / turn_radius;
             if keyboard.pressed(KeyCode::KeyA) {
                 car.angle -= angular_velocity * dt;
@@ -358,13 +402,13 @@ fn drive_car(
 
 fn draw_gizmos(car_query: Query<(&Transform, &Car)>, mut gizmos: Gizmos) {
     for (transform, _car) in &car_query {
-        gizmos.cross(transform.to_isometry(), 4.0, WHITE);
+        gizmos.cross(transform.to_isometry(), 1.0, WHITE);
         gizmos.cross(
             Isometry3d::new(
-                transform.translation + transform.up() * 17.2,
+                transform.translation + transform.up() * WHEEL_BASE,
                 transform.rotation,
             ),
-            4.0,
+            1.0,
             WHITE,
         );
     }
@@ -391,7 +435,7 @@ fn update_camera(
             };
 
             ortho.scale *= 1.0 - zoom_delta;
-            ortho.scale = ortho.scale.clamp(0.1, 5.0);
+            ortho.scale = ortho.scale.clamp(0.01, 5.0);
         }
     }
 

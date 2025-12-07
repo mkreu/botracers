@@ -5,5 +5,4 @@ edition = "2024"
 
 [dependencies]
 bevy = "0.17"
-bevy_rapier2d = "0.32"
-iyes_perf_ui = "0.5"
+iyes_perf_ui = { git = "https://github.com/mgi388/iyes_perf_ui", branch = "bevy-0.17" }
