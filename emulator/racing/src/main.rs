@@ -145,23 +145,18 @@ fn drive_car(
         }
 
 
-        let max_steer = PI / 6.0; // Max steering angle (30 degrees);
+        let max_steer = PI / 18.0; // Max steering angle (10 degrees);
         if keyboard.pressed(KeyCode::KeyA) {
-            car.steer -= max_steer * dt * 5.0 / (1.0 + forces.linear_velocity().length() * 0.1);
+            car.steer = -max_steer
         }
         else if keyboard.pressed(KeyCode::KeyD) {
-            car.steer += max_steer * dt * 5.0 / (1.0 + forces.linear_velocity().length() * 0.1);
+            car.steer = max_steer;
         } else {
             // Return wheels to center when no input
-            car.steer -= car.steer.signum() * max_steer * dt * 5.0 / (1.0 + forces.linear_velocity().length() * 0.1);
-        }
-        car.steer = car.steer.clamp(-max_steer, max_steer);
-        if car.steer.abs() < 0.001 {
             car.steer = 0.0;
         }
 
         let wheel_pos = position + forward * WHEEL_BASE;
-
         let wheel_forward = Vec2::from_angle(-car.steer).rotate(forward);
         gizmos.arrow_2d(
             wheel_pos,
@@ -176,10 +171,10 @@ fn drive_car(
             YELLOW,
         );
 
-        if forces.linear_velocity().length() > 1.0 {
+        if forces.linear_velocity().length() > 0.5 {
 
-            let front_force = -forces.linear_velocity().dot(wheel_left).clamp(-5.0, 5.0) * wheel_left;
-            let back_force = -forces.linear_velocity().dot(left).clamp(-5.0, 5.0) * left;
+            let front_force = -forces.linear_velocity().normalize().dot(wheel_left) * wheel_left * 10.0;
+            let back_force = -forces.linear_velocity().normalize().dot(left) * left * 10.0;
 
             gizmos.arrow_2d(
                 wheel_pos,
