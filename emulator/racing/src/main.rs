@@ -1,9 +1,13 @@
 use std::f32::consts::PI;
 
-use avian2d::prelude::*;
+use avian2d::prelude::{forces::ForcesItem, *};
 use bevy::{
-    color::palettes::css::{RED, WHITE, YELLOW}, diagnostic::FrameTimeDiagnosticsPlugin,
-    input::mouse::MouseWheel, prelude::*,
+    app,
+    color::palettes::css::{GREEN, RED, WHITE, YELLOW},
+    diagnostic::FrameTimeDiagnosticsPlugin,
+    gizmos,
+    input::mouse::MouseWheel,
+    prelude::*,
 };
 use iyes_perf_ui::{PerfUiPlugin, prelude::PerfUiDefaultEntries};
 
@@ -21,7 +25,7 @@ fn main() {
         .insert_resource(Gravity::ZERO)
         .add_systems(Startup, (setup, track::setup))
         .add_systems(Startup, set_default_zoom.after(setup))
-        .add_systems(FixedUpdate, drive_car)
+        .add_systems(FixedUpdate, apply_car_forces)
         .add_systems(Update, (update_camera, draw_gizmos))
         .run();
 }
@@ -44,7 +48,7 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
             Visibility::default(),
             RigidBody::Dynamic,
             LinearDamping(0.8),
-            AngularDamping(0.8),
+            //AngularDamping(0.8),
             Car { steer: 0.0 },
         ))
         .with_children(|parent| {
@@ -109,15 +113,12 @@ struct Car {
 #[derive(Component)]
 struct FrontWheel;
 
-fn drive_car(
+fn apply_car_forces(
     mut car_query: Query<(&Transform, &mut Car, &Children, Forces)>,
     mut wheel_query: Query<&mut Transform, (With<FrontWheel>, Without<Car>)>,
     mut gizmos: Gizmos,
     keyboard: Res<ButtonInput<KeyCode>>,
-    time: Res<Time>,
 ) {
-    let dt = time.delta_secs();
-
     for (transform, mut car, children, mut forces) in &mut car_query {
         // Car physics parameters
         let acceleration = 30.0;
@@ -130,73 +131,54 @@ fn drive_car(
         // Forward/Backward
         if keyboard.pressed(KeyCode::KeyS) {
             forces.apply_linear_acceleration(forward * -braking);
-            gizmos.arrow_2d(
-                position,
-                position + forward * -braking * 0.3,
-                WHITE,
-            );
+            gizmos.arrow_2d(position, position + forward * -braking * 0.3, WHITE);
         } else if keyboard.pressed(KeyCode::KeyW) {
             forces.apply_linear_acceleration(forward * acceleration);
-            gizmos.arrow_2d(
-                position,
-                position + forward * acceleration * 0.3,
-                WHITE,
-            );
+            gizmos.arrow_2d(position, position + forward * acceleration * 0.3, WHITE);
         }
 
-
-        let max_steer = PI / 18.0; // Max steering angle (10 degrees);
+        let max_steer = PI / 9.0; // Max steering angle (20 degrees);
         if keyboard.pressed(KeyCode::KeyA) {
             car.steer = -max_steer
-        }
-        else if keyboard.pressed(KeyCode::KeyD) {
+        } else if keyboard.pressed(KeyCode::KeyD) {
             car.steer = max_steer;
         } else {
             // Return wheels to center when no input
             car.steer = 0.0;
         }
 
-        let wheel_pos = position + forward * WHEEL_BASE;
-        let wheel_forward = Vec2::from_angle(-car.steer).rotate(forward);
-        gizmos.arrow_2d(
-            wheel_pos,
-            wheel_pos + wheel_forward * 2.0,
-            YELLOW,
+        // Front left
+        apply_wheel_force(
+            position,
+            forward * WHEEL_BASE + left * -0.75,
+            Vec2::from_angle(-car.steer).rotate(forward),
+            &mut forces,
+            &mut gizmos,
         );
-
-        let wheel_left = wheel_forward.perp();
-        gizmos.arrow_2d(
-            wheel_pos,
-            wheel_pos + wheel_left * 1.0,
-            YELLOW,
+        // Front right
+        apply_wheel_force(
+            position,
+            forward * WHEEL_BASE + left * 0.75,
+            Vec2::from_angle(-car.steer).rotate(forward),
+            &mut forces,
+            &mut gizmos,
         );
-
-        if forces.linear_velocity().length() > 0.5 {
-
-            let front_force = -forces.linear_velocity().normalize().dot(wheel_left) * wheel_left * 10.0;
-            let back_force = -forces.linear_velocity().normalize().dot(left) * left * 10.0;
-
-            gizmos.arrow_2d(
-                wheel_pos,
-                wheel_pos + front_force,
-                RED,
-            );
-            gizmos.arrow_2d(
-                position,
-                position + back_force,
-                RED,
-            );
-
-            forces.apply_linear_acceleration_at_point(
-                front_force,
-                wheel_pos,
-            );
-
-            forces.apply_linear_acceleration_at_point(
-                back_force,
-                position,
-            );
-        }
+        // Rear left
+        apply_wheel_force(
+            position,
+            left * -0.75,
+            forward,
+            &mut forces,
+            &mut gizmos,
+        );
+        // Rear right
+        apply_wheel_force(
+            position,
+            left * 0.75,
+            forward,
+            &mut forces,
+            &mut gizmos,
+        );
 
         // Update wheel rotation
         for child in children.iter() {
@@ -204,6 +186,32 @@ fn drive_car(
                 wheel_transform.rotation = Quat::from_rotation_z(-car.steer);
             }
         }
+    }
+}
+
+fn apply_wheel_force(
+    car_position: Vec2,
+    wheel_offset: Vec2,
+    wheel_forward: Vec2,
+    forces: &mut ForcesItem<'_, '_>,
+    gizmos: &mut Gizmos,
+) {
+    let wheel_pos = car_position + wheel_offset;
+    let wheel_left = wheel_forward.perp();
+    gizmos.arrow_2d(wheel_pos, wheel_pos + wheel_forward * 1.0, YELLOW);
+    gizmos.arrow_2d(wheel_pos, wheel_pos + wheel_left * 0.5, YELLOW);
+
+    let o = forces.angular_velocity();
+        let l = forces.linear_velocity();
+        let wow = wheel_pos - car_position;
+        let wheel_velocity = l + Vec2::new(-o * wow.y, o * wow.x);
+        gizmos.arrow_2d(wheel_pos, wheel_pos + wheel_velocity * 0.1, GREEN);
+
+
+    if wheel_velocity.length() > 0.1 {
+        let force = -wheel_velocity.normalize().dot(wheel_left) * wheel_left * 10.0_f32.min(wheel_velocity.length()*5.0);
+        gizmos.arrow_2d(wheel_pos, wheel_pos + force, RED);
+        forces.apply_linear_acceleration_at_point(force, wheel_pos);
     }
 }
 
