@@ -9,7 +9,8 @@ use bevy::{
 };
 use iyes_perf_ui::{PerfUiPlugin, prelude::PerfUiDefaultEntries};
 
-mod track;
+use racing::track;
+use racing::track_format::TrackFile;
 
 fn main() {
     App::new()
@@ -24,7 +25,7 @@ fn main() {
         .insert_resource(Time::<Fixed>::from_duration(
             std::time::Duration::from_secs_f32(1.0 / 200.0),
         ))
-        .add_systems(Startup, (setup, track::setup))
+        .add_systems(Startup, (setup, track::setup_track))
         .add_systems(Startup, set_default_zoom.after(setup))
         .add_systems(Update, (handle_car_input, update_ai_driver))
         .add_systems(FixedUpdate, apply_car_forces)
@@ -41,13 +42,18 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
     // Spawn a camera; we'll set a custom default zoom once in `set_default_zoom`.
     commands.spawn(Camera2d);
 
-    let start_point = track::first_point();
+    let track_file = TrackFile::load(std::path::Path::new("racing/assets/track1.toml"))
+        .expect("Failed to load track file");
+    let start_point = track::first_point_from_file(&track_file);
     spawn_car(&mut commands, &asset_server, start_point + Vec2::new(0.0, 2.0), true);
+    spawn_car(&mut commands, &asset_server, start_point + Vec2::new(1.0, -2.0), true);
+    spawn_car(&mut commands, &asset_server, start_point + Vec2::new(2.0, 2.0), true);
     spawn_car(&mut commands, &asset_server, start_point + Vec2::new(3.0, -2.0), true);
+    spawn_car(&mut commands, &asset_server, start_point + Vec2::new(4.0, 2.0), true);
+    spawn_car(&mut commands, &asset_server, start_point + Vec2::new(5.0, -2.0), true);
     spawn_car(&mut commands, &asset_server, start_point + Vec2::new(6.0, 2.0), true);
-    spawn_car(&mut commands, &asset_server, start_point + Vec2::new(9.0, -2.0), true);
-    spawn_car(&mut commands, &asset_server, start_point + Vec2::new(12.0, 2.0), true);
-    spawn_car(&mut commands, &asset_server, start_point + Vec2::new(15.0, -2.0), true);
+    spawn_car(&mut commands, &asset_server, start_point + Vec2::new(7.0, -2.0), true);
+
 
 }
 
@@ -69,6 +75,8 @@ fn spawn_car(commands: &mut Commands, asset_server: &AssetServer, position: Vec2
         Visibility::default(),
         RigidBody::Dynamic,
         LinearDamping(0.1),
+        Friction::new(0.1),
+        Restitution::new(0.2),
         Car {
             steer: 0.0,
             accelerator: 0.0,

@@ -1,20 +1,48 @@
 use bevy::prelude::*;
 
+use crate::track_format::TrackFile;
+
+/// The computed cubic spline for the track centre line.
 #[derive(Resource)]
-pub(crate) struct TrackSpline {
+pub struct TrackSpline {
     pub spline: CubicCurve<Vec2>,
 }
 
-pub(crate) fn first_point() -> Vec2 {
-    let control_points: Vec<Vec2> = read_control_points_from_csv("racing/assets/spielberg.csv");
-    control_points[0]
+/// Build a closed cubic B-spline from control points.
+pub fn build_spline(control_points: &[Vec2]) -> CubicCurve<Vec2> {
+    CubicBSpline::new(control_points.to_vec())
+        .to_curve_cyclic()
+        .expect("Failed to create cyclic curve")
 }
 
-pub(crate) fn setup(
+/// Compute the arc-length of a closed spline by sampling.
+pub fn spline_length(spline: &CubicCurve<Vec2>, samples: usize) -> f32 {
+    let domain = spline.domain();
+    let t_max = domain.end();
+    let mut length = 0.0f32;
+    let mut prev = spline.position(0.0);
+    for i in 1..=samples {
+        let t = (i as f32 / samples as f32) * t_max;
+        let p = spline.position(t);
+        length += prev.distance(p);
+        prev = p;
+    }
+    length
+}
+
+/// Bevy startup system: loads a track TOML and spawns the ground, track mesh and kerbs.
+pub fn setup_track(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
 ) {
+    let track_file = TrackFile::load(std::path::Path::new("racing/assets/track1.toml"))
+        .expect("Failed to load track file");
+
+    let control_points = track_file.control_points_vec2();
+    let track_width = track_file.metadata.track_width;
+    let kerb_width = track_file.metadata.kerb_width;
+
     // Green ground plane
     commands.spawn((
         Mesh2d(meshes.add(Rectangle::new(800.0, 800.0))),
@@ -22,35 +50,27 @@ pub(crate) fn setup(
         Transform::from_xyz(0.0, 0.0, -1.0),
     ));
 
-    let control_points: Vec<Vec2> = read_control_points_from_csv("racing/assets/spielberg.csv");
+    let spline = build_spline(&control_points);
 
-    let spline = CubicBSpline::new(control_points.clone())
-        .to_curve_cyclic()
-        .expect("Failed to create cyclic curve");
-
-    // Store spline as a resource for AI to use
     commands.insert_resource(TrackSpline {
         spline: spline.clone(),
     });
 
-    // Generate track mesh
-    let track_mesh = create_track_mesh(&spline, 12.0, 1000);
-
+    // Track surface
+    let track_mesh = create_track_mesh(&spline, track_width, 1000);
     commands.spawn((
         Mesh2d(meshes.add(track_mesh)),
         MeshMaterial2d(materials.add(Color::srgb(0.3, 0.3, 0.3))),
         Transform::from_xyz(0.0, 0.0, 0.0),
     ));
 
-    // Generate kerbs with vertex colors
-    let (inner_kerb, outer_kerb) = create_kerb_meshes(&spline, 12.0, 1000);
-
+    // Kerbs
+    let (inner_kerb, outer_kerb) = create_kerb_meshes(&spline, track_width, kerb_width, 1000);
     commands.spawn((
         Mesh2d(meshes.add(inner_kerb)),
         MeshMaterial2d(materials.add(ColorMaterial::default())),
         Transform::from_xyz(0.0, 0.0, 0.1),
     ));
-
     commands.spawn((
         Mesh2d(meshes.add(outer_kerb)),
         MeshMaterial2d(materials.add(ColorMaterial::default())),
@@ -58,22 +78,13 @@ pub(crate) fn setup(
     ));
 }
 
-fn read_control_points_from_csv(path: &str) -> Vec<Vec2> {
-    let text = std::fs::read_to_string(path).unwrap();
-
-    text.lines()
-        .map(|line| line.trim())
-        .filter(|line| !line.is_empty())
-        .map(|line| {
-            let mut parts = line.split(',');
-            let x = parts.next().unwrap().trim().parse::<f32>().unwrap() - 100.0;
-            let y = -parts.next().unwrap().trim().parse::<f32>().unwrap() + 100.0;
-            vec2(x, y)
-        })
-        .collect()
+/// Get the first control point from a track file (useful for spawn position).
+pub fn first_point_from_file(track_file: &TrackFile) -> Vec2 {
+    let pts = track_file.control_points_vec2();
+    pts[0]
 }
 
-fn create_track_mesh(spline: &CubicCurve<Vec2>, track_width: f32, segments: usize) -> Mesh {
+pub fn create_track_mesh(spline: &CubicCurve<Vec2>, track_width: f32, segments: usize) -> Mesh {
     let domain = spline.domain();
     let t_max = domain.end();
 
@@ -124,14 +135,14 @@ fn create_track_mesh(spline: &CubicCurve<Vec2>, track_width: f32, segments: usiz
     mesh
 }
 
-fn create_kerb_meshes(
+pub fn create_kerb_meshes(
     spline: &CubicCurve<Vec2>,
     track_width: f32,
+    kerb_width: f32,
     segments: usize,
 ) -> (Mesh, Mesh) {
     let domain = spline.domain();
     let t_max = domain.end();
-    let kerb_width = 0.5;
     let kerb_stripe_length = 1; // Number of segments per stripe color
 
     let mut inner_positions = Vec::new();
