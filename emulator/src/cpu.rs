@@ -1,3 +1,5 @@
+use std::any::Any;
+
 use elf::{ElfBytes, abi::PT_LOAD, endian::LittleEndian};
 use tracing::{debug, trace};
 
@@ -218,9 +220,14 @@ impl Hart {
 /// Default dram size (64KiB).
 pub const DRAM_SIZE: u32 = 1024 * 64;
 
-pub trait RamLike {
+pub trait RamLike: Send + Sync {
     fn load(&self, addr: u32, size: u32) -> Result<u32, ()>;
     fn store(&mut self, addr: u32, size: u32, value: u32) -> Result<(), ()>;
+
+    /// Support downcasting to concrete types.
+    fn as_any(&self) -> &dyn Any;
+    /// Support downcasting to concrete types (mutable).
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 /// The dynamic random access dram (DRAM).
@@ -262,6 +269,14 @@ impl RamLike for Dram {
             }
             _ => Err(()),
         }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }
 
@@ -361,25 +376,39 @@ impl RamLike for Mmu<'_> {
     fn load(&self, addr: u32, size: u32) -> Result<u32, ()> {
         if addr >= 0x1000 {
             self.dram.load(addr, size)
-        } else {
-            if let Some(device) = self.devices.get((addr as usize & 0x100) >> 2) {
-                device.load(addr, size)
+        } else if addr >= 0x100 {
+            let device_index = ((addr >> 8) & 0xF) as usize - 1;
+            if let Some(device) = self.devices.get(device_index) {
+                device.load(addr & 0xFF, size)
             } else {
                 Err(())
             }
+        } else {
+            Err(())
         }
     }
 
     fn store(&mut self, addr: u32, size: u32, value: u32) -> Result<(), ()> {
         if addr >= 0x1000 {
             self.dram.store(addr, size, value)
-        } else {
-            if let Some(device) = self.devices.get_mut(((addr as usize & 0x100) >> 8) - 1) {
-                device.store(addr, size, value)
+        } else if addr >= 0x100 {
+            let device_index = ((addr >> 8) & 0xF) as usize - 1;
+            if let Some(device) = self.devices.get_mut(device_index) {
+                device.store(addr & 0xFF, size, value)
             } else {
                 Err(())
             }
+        } else {
+            Err(())
         }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        unimplemented!("Mmu does not support downcasting")
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        unimplemented!("Mmu does not support downcasting")
     }
 }
 
@@ -396,5 +425,13 @@ impl RamLike for LogDevice {
         }
         print!("{}", char::from_u32(value).unwrap());
         Ok(())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
     }
 }

@@ -1,0 +1,210 @@
+use std::any::Any;
+
+use bevy::prelude::*;
+use emulator::cpu::RamLike;
+
+/// Memory-mapped device that provides car state to the RISC-V bot.
+/// Mapped at SLOT2 (0x200-0x2FF). The bot reads from this device.
+///
+/// Layout (all f32, little-endian):
+///   0x00: speed
+///   0x04: position_x
+///   0x08: position_y
+///   0x0C: forward_x
+///   0x10: forward_y
+///   0x14: target_x
+///   0x18: target_y
+pub struct CarStateDevice {
+    data: [u8; 28], // 7 × f32
+}
+
+impl Default for CarStateDevice {
+    fn default() -> Self {
+        Self { data: [0u8; 28] }
+    }
+}
+
+impl CarStateDevice {
+    fn write_f32(&mut self, offset: usize, value: f32) {
+        let bytes = value.to_le_bytes();
+        self.data[offset..offset + 4].copy_from_slice(&bytes);
+    }
+
+    /// Write the full car state from the simulation.
+    pub fn update(&mut self, speed: f32, position: Vec2, forward: Vec2, target: Vec2) {
+        self.write_f32(0x00, speed);
+        self.write_f32(0x04, position.x);
+        self.write_f32(0x08, position.y);
+        self.write_f32(0x0C, forward.x);
+        self.write_f32(0x10, forward.y);
+        self.write_f32(0x14, target.x);
+        self.write_f32(0x18, target.y);
+    }
+}
+
+impl RamLike for CarStateDevice {
+    fn load(&self, addr: u32, size: u32) -> Result<u32, ()> {
+        let addr = addr as usize;
+        match size {
+            8 => {
+                if addr < self.data.len() {
+                    Ok(self.data[addr] as u32)
+                } else {
+                    Ok(0)
+                }
+            }
+            16 => {
+                if addr + 1 < self.data.len() {
+                    Ok((self.data[addr] as u32) | ((self.data[addr + 1] as u32) << 8))
+                } else {
+                    Ok(0)
+                }
+            }
+            32 => {
+                if addr + 3 < self.data.len() {
+                    Ok((self.data[addr] as u32)
+                        | ((self.data[addr + 1] as u32) << 8)
+                        | ((self.data[addr + 2] as u32) << 16)
+                        | ((self.data[addr + 3] as u32) << 24))
+                } else {
+                    Ok(0)
+                }
+            }
+            _ => Err(()),
+        }
+    }
+
+    fn store(&mut self, _addr: u32, _size: u32, _value: u32) -> Result<(), ()> {
+        // CarState is read-only from the bot's perspective; silently ignore writes
+        Ok(())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+/// Memory-mapped device for car controls written by the RISC-V bot.
+/// Mapped at SLOT3 (0x300-0x3FF). The bot writes to this device.
+///
+/// Layout (all f32, little-endian):
+///   0x00: accelerator
+///   0x04: brake
+///   0x08: steering
+pub struct CarControlsDevice {
+    data: [u8; 12], // 3 × f32
+}
+
+impl Default for CarControlsDevice {
+    fn default() -> Self {
+        Self { data: [0u8; 12] }
+    }
+}
+
+impl CarControlsDevice {
+    fn read_f32(&self, offset: usize) -> f32 {
+        let bytes = [
+            self.data[offset],
+            self.data[offset + 1],
+            self.data[offset + 2],
+            self.data[offset + 3],
+        ];
+        f32::from_le_bytes(bytes)
+    }
+
+    /// Read the accelerator value set by the bot.
+    pub fn accelerator(&self) -> f32 {
+        self.read_f32(0x00)
+    }
+
+    /// Read the brake value set by the bot.
+    pub fn brake(&self) -> f32 {
+        self.read_f32(0x04)
+    }
+
+    /// Read the steering value set by the bot.
+    pub fn steering(&self) -> f32 {
+        self.read_f32(0x08)
+    }
+}
+
+impl RamLike for CarControlsDevice {
+    fn load(&self, addr: u32, size: u32) -> Result<u32, ()> {
+        // Allow the bot to read back its own controls
+        let addr = addr as usize;
+        match size {
+            8 => {
+                if addr < self.data.len() {
+                    Ok(self.data[addr] as u32)
+                } else {
+                    Ok(0)
+                }
+            }
+            16 => {
+                if addr + 1 < self.data.len() {
+                    Ok((self.data[addr] as u32) | ((self.data[addr + 1] as u32) << 8))
+                } else {
+                    Ok(0)
+                }
+            }
+            32 => {
+                if addr + 3 < self.data.len() {
+                    Ok((self.data[addr] as u32)
+                        | ((self.data[addr + 1] as u32) << 8)
+                        | ((self.data[addr + 2] as u32) << 16)
+                        | ((self.data[addr + 3] as u32) << 24))
+                } else {
+                    Ok(0)
+                }
+            }
+            _ => Err(()),
+        }
+    }
+
+    fn store(&mut self, addr: u32, size: u32, value: u32) -> Result<(), ()> {
+        let addr = addr as usize;
+        match size {
+            8 => {
+                if addr < self.data.len() {
+                    self.data[addr] = value as u8;
+                    Ok(())
+                } else {
+                    Err(())
+                }
+            }
+            16 => {
+                if addr + 1 < self.data.len() {
+                    self.data[addr] = (value & 0xFF) as u8;
+                    self.data[addr + 1] = ((value >> 8) & 0xFF) as u8;
+                    Ok(())
+                } else {
+                    Err(())
+                }
+            }
+            32 => {
+                if addr + 3 < self.data.len() {
+                    self.data[addr] = (value & 0xFF) as u8;
+                    self.data[addr + 1] = ((value >> 8) & 0xFF) as u8;
+                    self.data[addr + 2] = ((value >> 16) & 0xFF) as u8;
+                    self.data[addr + 3] = ((value >> 24) & 0xFF) as u8;
+                    Ok(())
+                } else {
+                    Err(())
+                }
+            }
+            _ => Err(()),
+        }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}

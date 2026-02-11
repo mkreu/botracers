@@ -7,11 +7,17 @@ use bevy::{
     input::mouse::MouseWheel,
     prelude::*,
 };
-use emulator::bevy::EmulatorPlugin;
+use emulator::bevy::{CpuComponent, EmulatorPlugin, cpu_system};
+use emulator::cpu::LogDevice;
 use iyes_perf_ui::{PerfUiPlugin, prelude::PerfUiDefaultEntries};
 
+use racing::devices::{CarControlsDevice, CarStateDevice};
 use racing::track;
 use racing::track_format::TrackFile;
+
+/// Pre-built RISC-V ELF binary for the bot car AI.
+const BOT_ELF: &[u8] =
+    include_bytes!("../../bot/target/riscv32i-unknown-none-elf/release/car");
 
 fn main() {
     let track_path = std::env::args()
@@ -35,7 +41,14 @@ fn main() {
         .add_systems(Startup, (setup, setup_track))
         .add_systems(Startup, set_default_zoom.after(setup))
         .add_systems(Update, (handle_car_input, update_ai_driver))
-        .add_systems(FixedUpdate, apply_car_forces)
+        .add_systems(
+            FixedUpdate,
+            (
+                update_emulator_driver.before(cpu_system),
+                apply_emulator_controls.after(cpu_system),
+                apply_car_forces,
+            ),
+        )
         .add_systems(Update, (update_camera, draw_gizmos))
         .run();
 }
@@ -104,54 +117,32 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>, track_path: Res
     let track_file = TrackFile::load(std::path::Path::new(&track_path.0))
         .unwrap_or_else(|_| panic!("Failed to load track file: {}", track_path.0));
     let start_point = track::first_point_from_file(&track_file);
-    spawn_car(
-        &mut commands,
-        &asset_server,
-        start_point + Vec2::new(0.0, 2.0),
-        true,
-    );
-    spawn_car(
-        &mut commands,
-        &asset_server,
-        start_point + Vec2::new(1.0, -2.0),
-        true,
-    );
-    spawn_car(
-        &mut commands,
-        &asset_server,
-        start_point + Vec2::new(2.0, 2.0),
-        true,
-    );
-    spawn_car(
-        &mut commands,
-        &asset_server,
-        start_point + Vec2::new(3.0, -2.0),
-        true,
-    );
-    spawn_car(
-        &mut commands,
-        &asset_server,
-        start_point + Vec2::new(4.0, 2.0),
-        true,
-    );
-    spawn_car(
-        &mut commands,
-        &asset_server,
-        start_point + Vec2::new(5.0, -2.0),
-        true,
-    );
-    spawn_car(
-        &mut commands,
-        &asset_server,
-        start_point + Vec2::new(6.0, 2.0),
-        true,
-    );
-    spawn_car(
-        &mut commands,
-        &asset_server,
-        start_point + Vec2::new(7.0, -2.0),
-        true,
-    );
+
+    // Spawn cars with alternating driver types:
+    // even index = native AIDriver, odd index = EmulatorDriver (RISC-V bot)
+    let offsets = [
+        Vec2::new(0.0, 2.0),
+        Vec2::new(1.0, -2.0),
+        Vec2::new(2.0, 2.0),
+        Vec2::new(3.0, -2.0),
+        Vec2::new(4.0, 2.0),
+        Vec2::new(5.0, -2.0),
+        Vec2::new(6.0, 2.0),
+        Vec2::new(7.0, -2.0),
+    ];
+    for (i, offset) in offsets.iter().enumerate() {
+        let driver = if i % 2 == 0 {
+            DriverType::NativeAI
+        } else {
+            DriverType::Emulator
+        };
+        spawn_car(
+            &mut commands,
+            &asset_server,
+            start_point + *offset,
+            driver,
+        );
+    }
 }
 
 fn set_default_zoom(mut camera_query: Query<&mut Projection, With<Camera2d>>) {
@@ -164,7 +155,17 @@ fn set_default_zoom(mut camera_query: Query<&mut Projection, With<Camera2d>>) {
     }
 }
 
-fn spawn_car(commands: &mut Commands, asset_server: &AssetServer, position: Vec2, is_ai: bool) {
+enum DriverType {
+    NativeAI,
+    Emulator,
+}
+
+fn spawn_car(
+    commands: &mut Commands,
+    asset_server: &AssetServer,
+    position: Vec2,
+    driver: DriverType,
+) {
     let sprite_scale = Vec3::splat(0.008);
 
     let mut entity = commands.spawn((
@@ -182,8 +183,23 @@ fn spawn_car(commands: &mut Commands, asset_server: &AssetServer, position: Vec2
         },
     ));
 
-    if is_ai {
-        entity.insert(AIDriver { target_t: 0.0 });
+    match driver {
+        DriverType::NativeAI => {
+            entity.insert(AIDriver { target_t: 0.0 });
+        }
+        DriverType::Emulator => {
+            // Create per-car devices: slot0=Log, slot1=CarState, slot2=CarControls
+            let devices: Vec<Box<dyn emulator::cpu::RamLike>> = vec![
+                Box::new(LogDevice),
+                Box::new(CarStateDevice::default()),
+                Box::new(CarControlsDevice::default()),
+            ];
+            let cpu = CpuComponent::new(BOT_ELF, devices, 5000);
+            entity.insert((
+                EmulatorDriver { target_t: 0.0 },
+                cpu,
+            ));
+        }
     }
 
     entity.with_children(|parent| {
@@ -243,10 +259,15 @@ struct AIDriver {
 }
 
 #[derive(Component)]
+struct EmulatorDriver {
+    target_t: f32,
+}
+
+#[derive(Component)]
 struct FrontWheel;
 
 fn handle_car_input(
-    mut car_query: Query<&mut Car, Without<AIDriver>>,
+    mut car_query: Query<&mut Car, (Without<AIDriver>, Without<EmulatorDriver>)>,
     keyboard: Res<ButtonInput<KeyCode>>,
 ) {
     for mut car in &mut car_query {
@@ -417,6 +438,88 @@ fn update_ai_driver(
             // Straight or gentle curve - full throttle
             car.accelerator = 1.0 * 0.1;
             car.brake = 0.0;
+        }
+    }
+}
+
+/// Runs BEFORE cpu_system: computes the lookahead target and writes car state
+/// into the emulator's CarStateDevice so the RISC-V bot can read it.
+fn update_emulator_driver(
+    mut emu_query: Query<(
+        &Transform,
+        &LinearVelocity,
+        &mut EmulatorDriver,
+        &mut CpuComponent,
+    )>,
+    track: Option<Res<track::TrackSpline>>,
+) {
+    let Some(track) = track else {
+        return;
+    };
+
+    let domain = track.spline.domain();
+    let t_max = domain.end();
+
+    for (transform, velocity, mut emu, mut cpu) in &mut emu_query {
+        let car_pos = transform.translation.xy();
+        let car_forward = transform.up().xy().normalize();
+        let car_speed = velocity.length();
+
+        // Same spline-walk logic as update_ai_driver to find current position
+        let mut best_t = emu.target_t;
+        let mut best_score = f32::MAX;
+
+        let window_samples = 50;
+        let window_size = t_max * 0.1;
+        for i in 0..window_samples {
+            let offset = (i as f32 / window_samples as f32) * window_size - window_size * 0.5;
+            let test_t = (emu.target_t + offset + t_max) % t_max;
+            let test_pos = track.spline.position(test_t);
+            let dist = car_pos.distance(test_pos);
+            let forward_bias = if offset > 0.0 { 0.0 } else { 2.0 };
+            let score = dist + forward_bias;
+            if score < best_score {
+                best_score = score;
+                best_t = test_t;
+            }
+        }
+
+        // Dynamic lookahead based on speed
+        let base_lookahead = 2.0;
+        let speed_factor = (car_speed * 0.5).max(1.0);
+        let lookahead_distance = base_lookahead * speed_factor;
+
+        let mut current_t = best_t;
+        let mut traveled = 0.0;
+        while traveled < lookahead_distance {
+            let step = t_max / 2000.0;
+            let next_t = (current_t + step) % t_max;
+            let p1 = track.spline.position(current_t);
+            let p2 = track.spline.position(next_t);
+            traveled += p1.distance(p2);
+            current_t = next_t;
+        }
+
+        emu.target_t = current_t;
+        let target_pos = track.spline.position(emu.target_t);
+
+        // Write state into the CarStateDevice (device index 1 = slot at 0x200)
+        if let Some(state_dev) = cpu.device_as_mut::<CarStateDevice>(1) {
+            state_dev.update(car_speed, car_pos, car_forward, target_pos);
+        }
+    }
+}
+
+/// Runs AFTER cpu_system: reads the bot's control outputs from CarControlsDevice
+/// and applies them to the Car component.
+fn apply_emulator_controls(
+    mut emu_query: Query<(&mut Car, &CpuComponent), With<EmulatorDriver>>,
+) {
+    for (mut car, cpu) in &mut emu_query {
+        if let Some(ctrl_dev) = cpu.device_as::<CarControlsDevice>(2) {
+            car.accelerator = ctrl_dev.accelerator();
+            car.brake = ctrl_dev.brake();
+            car.steer = ctrl_dev.steering();
         }
     }
 }
