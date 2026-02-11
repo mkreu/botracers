@@ -248,6 +248,8 @@ Controls:
   Ctrl+O       Open
   Ctrl+N       New track
   Shift+drag   Ruler measurement
+  [ / ]        Decrease / increase track width
+  - / =        Scale track down / up
   C            Toggle curvature heatmap
   L            Toggle point labels
   H            Toggle this help";
@@ -715,6 +717,32 @@ fn handle_keyboard(
         return;
     }
 
+    // --- Track width adjustment ([ / ]) ---
+    if keyboard.just_pressed(KeyCode::BracketLeft) {
+        editor.push_undo();
+        editor.track_file.metadata.track_width = (editor.track_file.metadata.track_width - 0.5).max(1.0);
+        rebuild.0 += 1;
+        return;
+    }
+    if keyboard.just_pressed(KeyCode::BracketRight) {
+        editor.push_undo();
+        editor.track_file.metadata.track_width += 0.5;
+        rebuild.0 += 1;
+        return;
+    }
+
+    // --- Scale all points (- / =) ---
+    if keyboard.just_pressed(KeyCode::Minus) && !ctrl {
+        scale_track(&mut editor, 1.0 / 1.05);
+        rebuild.0 += 1;
+        return;
+    }
+    if keyboard.just_pressed(KeyCode::Equal) && !ctrl {
+        scale_track(&mut editor, 1.05);
+        rebuild.0 += 1;
+        return;
+    }
+
     // --- Toggle curvature (C) ---
     if keyboard.just_pressed(KeyCode::KeyC) {
         editor.show_curvature = !editor.show_curvature;
@@ -730,6 +758,22 @@ fn handle_keyboard(
     // --- Toggle help (H) ---
     if keyboard.just_pressed(KeyCode::KeyH) {
         editor.show_help = !editor.show_help;
+    }
+}
+
+/// Scale all control points around their centroid by the given factor.
+fn scale_track(editor: &mut ResMut<EditorState>, factor: f32) {
+    if editor.track_file.control_points.is_empty() {
+        return;
+    }
+    editor.push_undo();
+    let pts = &editor.track_file.control_points;
+    let n = pts.len() as f32;
+    let cx: f32 = pts.iter().map(|p| p[0]).sum::<f32>() / n;
+    let cy: f32 = pts.iter().map(|p| p[1]).sum::<f32>() / n;
+    for p in &mut editor.track_file.control_points {
+        p[0] = cx + (p[0] - cx) * factor;
+        p[1] = cy + (p[1] - cy) * factor;
     }
 }
 
@@ -839,6 +883,8 @@ fn update_ui_text(
             .map(|i| format!("  |  Selected: #{i}"))
             .unwrap_or_default();
 
+        let tw = editor.track_file.metadata.track_width;
+
         let curvature_str = if editor.show_curvature {
             "  |  Curvature: ON"
         } else {
@@ -847,7 +893,7 @@ fn update_ui_text(
 
         **text = format!(
             "{name}{dirty_marker}  |  {file_str}\n\
-             Points: {n_pts}  |  Length: {length_str}{selected_str}{curvature_str}"
+             Points: {n_pts}  |  Width: {tw:.1}  |  Length: {length_str}{selected_str}{curvature_str}"
         );
     }
 

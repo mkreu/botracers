@@ -4,12 +4,14 @@ use std::path::Path;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TrackFile {
+    #[serde(default)]
     pub metadata: TrackMetadata,
     pub control_points: Vec<[f32; 2]>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct TrackMetadata {
+    #[serde(default = "default_name")]
     pub name: String,
     #[serde(default)]
     pub author: String,
@@ -17,6 +19,21 @@ pub struct TrackMetadata {
     pub track_width: f32,
     #[serde(default = "default_kerb_width")]
     pub kerb_width: f32,
+}
+
+impl Default for TrackMetadata {
+    fn default() -> Self {
+        Self {
+            name: default_name(),
+            author: String::new(),
+            track_width: default_track_width(),
+            kerb_width: default_kerb_width(),
+        }
+    }
+}
+
+fn default_name() -> String {
+    "Untitled".to_string()
 }
 
 fn default_track_width() -> f32 {

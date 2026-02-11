@@ -13,6 +13,10 @@ use racing::track;
 use racing::track_format::TrackFile;
 
 fn main() {
+    let track_path = std::env::args()
+        .nth(1)
+        .unwrap_or_else(|| "racing/assets/track1.toml".to_string());
+
     App::new()
         .add_plugins((
             DefaultPlugins,
@@ -25,7 +29,8 @@ fn main() {
         .insert_resource(Time::<Fixed>::from_duration(
             std::time::Duration::from_secs_f32(1.0 / 200.0),
         ))
-        .add_systems(Startup, (setup, track::setup_track))
+        .insert_resource(TrackPath(track_path))
+        .add_systems(Startup, (setup, setup_track))
         .add_systems(Startup, set_default_zoom.after(setup))
         .add_systems(Update, (handle_car_input, update_ai_driver))
         .add_systems(FixedUpdate, apply_car_forces)
@@ -33,17 +38,68 @@ fn main() {
         .run();
 }
 
+#[derive(Resource)]
+struct TrackPath(String);
+
 const WHEEL_BASE: f32 = 1.18;
 const WHEEL_TRACK: f32 = 0.95;
 
-fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn setup_track(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    track_path: Res<TrackPath>,
+) {
+    let track_file = TrackFile::load(std::path::Path::new(&track_path.0))
+        .expect(&format!("Failed to load track file: {}", track_path.0));
+
+    let control_points = track_file.control_points_vec2();
+    let track_width = track_file.metadata.track_width;
+    let kerb_width = track_file.metadata.kerb_width;
+
+    // Green ground plane
+    commands.spawn((
+        Mesh2d(meshes.add(Rectangle::new(800.0, 800.0))),
+        MeshMaterial2d(materials.add(Color::srgb(0.2, 0.6, 0.2))),
+        Transform::from_xyz(0.0, 0.0, -1.0),
+    ));
+
+    let spline = track::build_spline(&control_points);
+
+    commands.insert_resource(track::TrackSpline {
+        spline: spline.clone(),
+    });
+
+    // Track surface
+    let track_mesh = track::create_track_mesh(&spline, track_width, 1000);
+    commands.spawn((
+        Mesh2d(meshes.add(track_mesh)),
+        MeshMaterial2d(materials.add(Color::srgb(0.3, 0.3, 0.3))),
+        Transform::from_xyz(0.0, 0.0, 0.0),
+    ));
+
+    // Kerbs
+    let (inner_kerb, outer_kerb) = track::create_kerb_meshes(&spline, track_width, kerb_width, 1000);
+    commands.spawn((
+        Mesh2d(meshes.add(inner_kerb)),
+        MeshMaterial2d(materials.add(ColorMaterial::default())),
+        Transform::from_xyz(0.0, 0.0, 0.1),
+    ));
+    commands.spawn((
+        Mesh2d(meshes.add(outer_kerb)),
+        MeshMaterial2d(materials.add(ColorMaterial::default())),
+        Transform::from_xyz(0.0, 0.0, 0.1),
+    ));
+}
+
+fn setup(mut commands: Commands, asset_server: Res<AssetServer>, track_path: Res<TrackPath>) {
     commands.spawn(PerfUiDefaultEntries::default());
 
     // Spawn a camera; we'll set a custom default zoom once in `set_default_zoom`.
     commands.spawn(Camera2d);
 
-    let track_file = TrackFile::load(std::path::Path::new("racing/assets/track1.toml"))
-        .expect("Failed to load track file");
+    let track_file = TrackFile::load(std::path::Path::new(&track_path.0))
+        .expect(&format!("Failed to load track file: {}", track_path.0));
     let start_point = track::first_point_from_file(&track_file);
     spawn_car(&mut commands, &asset_server, start_point + Vec2::new(0.0, 2.0), true);
     spawn_car(&mut commands, &asset_server, start_point + Vec2::new(1.0, -2.0), true);

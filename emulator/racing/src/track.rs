@@ -1,7 +1,5 @@
 use bevy::prelude::*;
 
-use crate::track_format::TrackFile;
-
 /// The computed cubic spline for the track centre line.
 #[derive(Resource)]
 pub struct TrackSpline {
@@ -30,56 +28,8 @@ pub fn spline_length(spline: &CubicCurve<Vec2>, samples: usize) -> f32 {
     length
 }
 
-/// Bevy startup system: loads a track TOML and spawns the ground, track mesh and kerbs.
-pub fn setup_track(
-    mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<ColorMaterial>>,
-) {
-    let track_file = TrackFile::load(std::path::Path::new("racing/assets/track1.toml"))
-        .expect("Failed to load track file");
-
-    let control_points = track_file.control_points_vec2();
-    let track_width = track_file.metadata.track_width;
-    let kerb_width = track_file.metadata.kerb_width;
-
-    // Green ground plane
-    commands.spawn((
-        Mesh2d(meshes.add(Rectangle::new(800.0, 800.0))),
-        MeshMaterial2d(materials.add(Color::srgb(0.2, 0.6, 0.2))),
-        Transform::from_xyz(0.0, 0.0, -1.0),
-    ));
-
-    let spline = build_spline(&control_points);
-
-    commands.insert_resource(TrackSpline {
-        spline: spline.clone(),
-    });
-
-    // Track surface
-    let track_mesh = create_track_mesh(&spline, track_width, 1000);
-    commands.spawn((
-        Mesh2d(meshes.add(track_mesh)),
-        MeshMaterial2d(materials.add(Color::srgb(0.3, 0.3, 0.3))),
-        Transform::from_xyz(0.0, 0.0, 0.0),
-    ));
-
-    // Kerbs
-    let (inner_kerb, outer_kerb) = create_kerb_meshes(&spline, track_width, kerb_width, 1000);
-    commands.spawn((
-        Mesh2d(meshes.add(inner_kerb)),
-        MeshMaterial2d(materials.add(ColorMaterial::default())),
-        Transform::from_xyz(0.0, 0.0, 0.1),
-    ));
-    commands.spawn((
-        Mesh2d(meshes.add(outer_kerb)),
-        MeshMaterial2d(materials.add(ColorMaterial::default())),
-        Transform::from_xyz(0.0, 0.0, 0.1),
-    ));
-}
-
 /// Get the first control point from a track file (useful for spawn position).
-pub fn first_point_from_file(track_file: &TrackFile) -> Vec2 {
+pub fn first_point_from_file(track_file: &crate::track_format::TrackFile) -> Vec2 {
     let pts = track_file.control_points_vec2();
     pts[0]
 }
