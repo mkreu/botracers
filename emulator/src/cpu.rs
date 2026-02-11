@@ -263,7 +263,6 @@ impl RamLike for Dram {
             _ => Err(()),
         }
     }
-
 }
 
 impl Dram {

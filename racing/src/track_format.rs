@@ -62,16 +62,14 @@ impl TrackFile {
     pub fn load(path: &Path) -> Result<Self, String> {
         let text = std::fs::read_to_string(path)
             .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
-        toml::from_str(&text)
-            .map_err(|e| format!("Failed to parse {}: {}", path.display(), e))
+        toml::from_str(&text).map_err(|e| format!("Failed to parse {}: {}", path.display(), e))
     }
 
     /// Save this track to a TOML file.
     pub fn save(&self, path: &Path) -> Result<(), String> {
         let text = toml::to_string_pretty(self)
             .map_err(|e| format!("Failed to serialize track: {}", e))?;
-        std::fs::write(path, text)
-            .map_err(|e| format!("Failed to write {}: {}", path.display(), e))
+        std::fs::write(path, text).map_err(|e| format!("Failed to write {}: {}", path.display(), e))
     }
 
     /// Get control points as Vec2 (world coordinates, no transform needed).

@@ -1,7 +1,7 @@
-use cpu::{Hart, Dram};
+use cpu::{Dram, Hart};
 
-pub mod cpu;
 pub mod bevy;
+pub mod cpu;
 
 #[derive(Default)]
 pub struct CpuBuilder {}

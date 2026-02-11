@@ -1,11 +1,6 @@
 use std::path::PathBuf;
 
-use bevy::{
-    color::palettes::css,
-    input::mouse::MouseWheel,
-    prelude::*,
-    window::PrimaryWindow,
-};
+use bevy::{color::palettes::css, input::mouse::MouseWheel, prelude::*, window::PrimaryWindow};
 
 use racing::track::{self, TrackSpline};
 use racing::track_format::TrackFile;
@@ -483,26 +478,25 @@ fn handle_camera(
     }
 
     // --- Pan (right-click drag) ---
-    if let Some(cursor) = window.cursor_position() {
-        if buttons.just_pressed(MouseButton::Right) {
-            editor.pan_origin = Some(cursor);
-            editor.pan_camera_origin = Some(cam_tf.translation);
-        }
+    if let Some(cursor) = window.cursor_position()
+        && buttons.just_pressed(MouseButton::Right)
+    {
+        editor.pan_origin = Some(cursor);
+        editor.pan_camera_origin = Some(cam_tf.translation);
     }
 
-    if buttons.pressed(MouseButton::Right) {
-        if let (Some(origin), Some(cam_origin)) = (editor.pan_origin, editor.pan_camera_origin) {
-            if let Some(cursor) = window.cursor_position() {
-                let scale = if let Projection::Orthographic(ref ortho) = *projection {
-                    ortho.scale
-                } else {
-                    1.0
-                };
-                let delta = cursor - origin;
-                cam_tf.translation.x = cam_origin.x - delta.x * scale;
-                cam_tf.translation.y = cam_origin.y + delta.y * scale; // flip Y
-            }
-        }
+    if buttons.pressed(MouseButton::Right)
+        && let (Some(origin), Some(cam_origin)) = (editor.pan_origin, editor.pan_camera_origin)
+        && let Some(cursor) = window.cursor_position()
+    {
+        let scale = if let Projection::Orthographic(ref ortho) = *projection {
+            ortho.scale
+        } else {
+            1.0
+        };
+        let delta = cursor - origin;
+        cam_tf.translation.x = cam_origin.x - delta.x * scale;
+        cam_tf.translation.y = cam_origin.y + delta.y * scale; // flip Y
     }
 
     if buttons.just_released(MouseButton::Right) {
@@ -515,11 +509,7 @@ fn handle_camera(
 // Cursor → world helper
 // ---------------------------------------------------------------------------
 
-fn cursor_to_world(
-    window: &Window,
-    camera: &Camera,
-    cam_gt: &GlobalTransform,
-) -> Option<Vec2> {
+fn cursor_to_world(window: &Window, camera: &Camera, cam_gt: &GlobalTransform) -> Option<Vec2> {
     let cursor = window.cursor_position()?;
     camera.viewport_to_world_2d(cam_gt, cursor).ok()
 }
@@ -537,8 +527,12 @@ fn handle_mouse_input(
     mut rebuild: ResMut<RebuildFlag>,
 ) {
     let Ok(window) = windows.single() else { return };
-    let Ok((camera, cam_gt)) = camera_q.single() else { return };
-    let Some(world_pos) = cursor_to_world(window, camera, cam_gt) else { return };
+    let Ok((camera, cam_gt)) = camera_q.single() else {
+        return;
+    };
+    let Some(world_pos) = cursor_to_world(window, camera, cam_gt) else {
+        return;
+    };
 
     let shift = keyboard.pressed(KeyCode::ShiftLeft) || keyboard.pressed(KeyCode::ShiftRight);
 
@@ -583,13 +577,14 @@ fn handle_mouse_input(
         rebuild.0 += 1; // update visuals for selection change
     }
 
-    if buttons.pressed(MouseButton::Left) && editor.dragging {
-        if let Some(idx) = editor.selected_point {
-            editor.track_file.control_points[idx] = [world_pos.x, world_pos.y];
-            editor.drag_prev_world = Some(world_pos);
-            editor.dirty = true;
-            rebuild.0 += 1;
-        }
+    if buttons.pressed(MouseButton::Left)
+        && editor.dragging
+        && let Some(idx) = editor.selected_point
+    {
+        editor.track_file.control_points[idx] = [world_pos.x, world_pos.y];
+        editor.drag_prev_world = Some(world_pos);
+        editor.dirty = true;
+        rebuild.0 += 1;
     }
 
     if buttons.just_released(MouseButton::Left) {
@@ -615,14 +610,18 @@ fn handle_keyboard(
     // --- Undo / Redo ---
     if ctrl && keyboard.just_pressed(KeyCode::KeyZ) {
         if shift {
-            if editor.redo() { rebuild.0 += 1; }
-        } else {
-            if editor.undo() { rebuild.0 += 1; }
+            if editor.redo() {
+                rebuild.0 += 1;
+            }
+        } else if editor.undo() {
+            rebuild.0 += 1;
         }
         return;
     }
     if ctrl && keyboard.just_pressed(KeyCode::KeyY) {
-        if editor.redo() { rebuild.0 += 1; }
+        if editor.redo() {
+            rebuild.0 += 1;
+        }
         return;
     }
 
@@ -687,8 +686,12 @@ fn handle_keyboard(
     // --- Add point (A) at cursor ---
     if keyboard.just_pressed(KeyCode::KeyA) {
         let Ok(window) = windows.single() else { return };
-        let Ok((camera, cam_gt)) = camera_q.single() else { return };
-        let Some(world_pos) = cursor_to_world(window, camera, cam_gt) else { return };
+        let Ok((camera, cam_gt)) = camera_q.single() else {
+            return;
+        };
+        let Some(world_pos) = cursor_to_world(window, camera, cam_gt) else {
+            return;
+        };
 
         editor.push_undo();
         let insert_idx = find_insert_index(world_pos, &editor.track_file.control_points);
@@ -703,16 +706,16 @@ fn handle_keyboard(
 
     // --- Delete selected point (Delete / Backspace) ---
     if keyboard.just_pressed(KeyCode::Delete) || keyboard.just_pressed(KeyCode::Backspace) {
-        if let Some(idx) = editor.selected_point {
-            if editor.track_file.control_points.len() > 1 {
-                editor.push_undo();
-                editor.track_file.control_points.remove(idx);
-                // Adjust selection
-                if idx >= editor.track_file.control_points.len() {
-                    editor.selected_point = Some(editor.track_file.control_points.len() - 1);
-                }
-                rebuild.0 += 1;
+        if let Some(idx) = editor.selected_point
+            && editor.track_file.control_points.len() > 1
+        {
+            editor.push_undo();
+            editor.track_file.control_points.remove(idx);
+            // Adjust selection
+            if idx >= editor.track_file.control_points.len() {
+                editor.selected_point = Some(editor.track_file.control_points.len() - 1);
             }
+            rebuild.0 += 1;
         }
         return;
     }
@@ -720,7 +723,8 @@ fn handle_keyboard(
     // --- Track width adjustment ([ / ]) ---
     if keyboard.just_pressed(KeyCode::BracketLeft) {
         editor.push_undo();
-        editor.track_file.metadata.track_width = (editor.track_file.metadata.track_width - 0.5).max(1.0);
+        editor.track_file.metadata.track_width =
+            (editor.track_file.metadata.track_width - 0.5).max(1.0);
         rebuild.0 += 1;
         return;
     }
@@ -929,11 +933,11 @@ fn draw_editor_gizmos(
     }
 
     // Highlight selected point with a larger ring
-    if let Some(idx) = editor.selected_point {
-        if idx < pts.len() {
-            let p = Vec2::new(pts[idx][0], pts[idx][1]);
-            gizmos.circle_2d(p, 2.0, css::AQUA);
-        }
+    if let Some(idx) = editor.selected_point
+        && idx < pts.len()
+    {
+        let p = Vec2::new(pts[idx][0], pts[idx][1]);
+        gizmos.circle_2d(p, 2.0, css::AQUA);
     }
 
     // Draw the spline itself as a gizmo line (thin, on top of meshes for clarity)

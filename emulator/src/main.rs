@@ -23,7 +23,7 @@ fn main() {
 fn run_plain(mut cpu: Hart, mut mmu: Mmu) {
     loop {
         // 1. Fetch.
-        let inst = cpu.fetch(&mut mmu);
+        let inst = cpu.fetch(&mmu);
 
         // 2. Add 4 to the program counter.
         cpu.pc += 4;

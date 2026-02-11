@@ -24,7 +24,7 @@ fn main() {
             FrameTimeDiagnosticsPlugin::default(),
             PerfUiPlugin,
             PhysicsPlugins::default(),
-            PhysicsDebugPlugin::default(),
+            PhysicsDebugPlugin,
             EmulatorPlugin,
         ))
         .insert_resource(Gravity::ZERO)
@@ -53,7 +53,7 @@ fn setup_track(
     track_path: Res<TrackPath>,
 ) {
     let track_file = TrackFile::load(std::path::Path::new(&track_path.0))
-        .expect(&format!("Failed to load track file: {}", track_path.0));
+        .unwrap_or_else(|_| panic!("Failed to load track file: {}", track_path.0));
 
     let control_points = track_file.control_points_vec2();
     let track_width = track_file.metadata.track_width;
@@ -81,7 +81,8 @@ fn setup_track(
     ));
 
     // Kerbs
-    let (inner_kerb, outer_kerb) = track::create_kerb_meshes(&spline, track_width, kerb_width, 1000);
+    let (inner_kerb, outer_kerb) =
+        track::create_kerb_meshes(&spline, track_width, kerb_width, 1000);
     commands.spawn((
         Mesh2d(meshes.add(inner_kerb)),
         MeshMaterial2d(materials.add(ColorMaterial::default())),
@@ -101,18 +102,56 @@ fn setup(mut commands: Commands, asset_server: Res<AssetServer>, track_path: Res
     commands.spawn(Camera2d);
 
     let track_file = TrackFile::load(std::path::Path::new(&track_path.0))
-        .expect(&format!("Failed to load track file: {}", track_path.0));
+        .unwrap_or_else(|_| panic!("Failed to load track file: {}", track_path.0));
     let start_point = track::first_point_from_file(&track_file);
-    spawn_car(&mut commands, &asset_server, start_point + Vec2::new(0.0, 2.0), true);
-    spawn_car(&mut commands, &asset_server, start_point + Vec2::new(1.0, -2.0), true);
-    spawn_car(&mut commands, &asset_server, start_point + Vec2::new(2.0, 2.0), true);
-    spawn_car(&mut commands, &asset_server, start_point + Vec2::new(3.0, -2.0), true);
-    spawn_car(&mut commands, &asset_server, start_point + Vec2::new(4.0, 2.0), true);
-    spawn_car(&mut commands, &asset_server, start_point + Vec2::new(5.0, -2.0), true);
-    spawn_car(&mut commands, &asset_server, start_point + Vec2::new(6.0, 2.0), true);
-    spawn_car(&mut commands, &asset_server, start_point + Vec2::new(7.0, -2.0), true);
-
-
+    spawn_car(
+        &mut commands,
+        &asset_server,
+        start_point + Vec2::new(0.0, 2.0),
+        true,
+    );
+    spawn_car(
+        &mut commands,
+        &asset_server,
+        start_point + Vec2::new(1.0, -2.0),
+        true,
+    );
+    spawn_car(
+        &mut commands,
+        &asset_server,
+        start_point + Vec2::new(2.0, 2.0),
+        true,
+    );
+    spawn_car(
+        &mut commands,
+        &asset_server,
+        start_point + Vec2::new(3.0, -2.0),
+        true,
+    );
+    spawn_car(
+        &mut commands,
+        &asset_server,
+        start_point + Vec2::new(4.0, 2.0),
+        true,
+    );
+    spawn_car(
+        &mut commands,
+        &asset_server,
+        start_point + Vec2::new(5.0, -2.0),
+        true,
+    );
+    spawn_car(
+        &mut commands,
+        &asset_server,
+        start_point + Vec2::new(6.0, 2.0),
+        true,
+    );
+    spawn_car(
+        &mut commands,
+        &asset_server,
+        start_point + Vec2::new(7.0, -2.0),
+        true,
+    );
 }
 
 fn set_default_zoom(mut camera_query: Query<&mut Projection, With<Camera2d>>) {
@@ -129,7 +168,8 @@ fn spawn_car(commands: &mut Commands, asset_server: &AssetServer, position: Vec2
     let sprite_scale = Vec3::splat(0.008);
 
     let mut entity = commands.spawn((
-        Transform::from_xyz(position.x, position.y, 1.0).with_rotation(Quat::from_axis_angle(Vec3::Z, PI / 2.0)),
+        Transform::from_xyz(position.x, position.y, 1.0)
+            .with_rotation(Quat::from_axis_angle(Vec3::Z, PI / 2.0)),
         Visibility::default(),
         RigidBody::Dynamic,
         LinearDamping(0.1),
