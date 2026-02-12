@@ -16,7 +16,7 @@ use racing::track_format::TrackFile;
 
 /// Pre-built RISC-V ELF binary for the bot car AI.
 const BOT_ELF: &[u8] =
-    include_bytes!("../../bot/target/riscv32i-unknown-none-elf/release/car");
+    include_bytes!("../../bot/target/riscv32imafc-unknown-none-elf/release/car");
 
 fn main() {
     let track_path = std::env::args()
