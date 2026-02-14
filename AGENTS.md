@@ -34,12 +34,12 @@ Bot binaries are now discovered at runtime via `cargo metadata` in `bot/`. When 
 **Must remain use-case agnostic.** No car/racing-specific code belongs here.
 
 - **`cpu.rs`** — Core emulator: `Hart` (32 GPRs, 32 FPRs, PC, LR/SC reservation), `Dram` (ELF-backed memory with stack headroom), `Mmu` (routes memory accesses to DRAM or devices), `LogDevice` (buffered char output with `drain_output()` and `output()` methods)
-- **`bevy.rs`** — `CpuComponent` holds a `Hart`, `Dram`, and `Vec<Box<dyn RamLike>>` of devices. Use `CpuComponent::new(elf, devices, instructions_per_update)` to create. `cpu_system` is a public system function; the consumer must register it in `FixedUpdate` with appropriate run conditions.
+- **`bevy.rs`** — `CpuComponent` holds a `Hart`, `Dram`, and `Vec<Box<dyn Device>>` of devices. Use `CpuComponent::new(elf, devices, instructions_per_update)` to create. `cpu_system` is a public system function; the consumer must register it in `FixedUpdate` with appropriate run conditions.
 - **`lib.rs`** — `CpuBuilder` helper
 
-**`RamLike` trait** (`cpu.rs`) — The memory interface for devices:
+**`Device` trait** (`cpu.rs`) — The memory interface for devices:
 ```rust
-pub trait RamLike: Send + Sync {
+pub trait Device: Send + Sync {
     fn load(&self, addr: u32, size: u32) -> Result<u32, ()>;
     fn store(&mut self, addr: u32, size: u32, value: u32) -> Result<(), ()>;
     fn as_any(&self) -> &dyn Any;
@@ -136,7 +136,7 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
 - **`main.rs`** — Bevy app setup, game state management (`SimState`), event-based car spawning, physics, free camera with follow-on-select, two AI systems
 - **`ui.rs`** — `RaceUiPlugin`: right-side panel with driver type selector, add/remove car buttons, start/pause/reset, per-car debug gizmo toggles, per-car follow camera button, scrollable console output (drains `LogDevice` buffers)
 - **`bot_runtime.rs`** — Runtime bot integration helpers: discovers available `bot` binaries via `cargo metadata`, compiles selected binaries (`cargo build --release --bin ... --target riscv32imafc-unknown-none-elf`), and loads produced ELF bytes.
-- **`devices.rs`** — `CarStateDevice`, `CarControlsDevice`, `SplineDevice`, `TrackRadarDevice`, and `CarRadarDevice` implementing `RamLike` (host-side counterparts to the bot's volatile pointers)
+- **`devices.rs`** — `CarStateDevice`, `CarControlsDevice`, `SplineDevice`, `TrackRadarDevice`, and `CarRadarDevice` implementing `Device` (host-side counterparts to the bot's volatile pointers)
 - **`track.rs`** — `TrackSpline` resource, spline construction, track/kerb mesh generation
 - **`track_format.rs`** — TOML-based track file format (`TrackFile`)
 - **`bin/editor.rs`** — Track editor tool
@@ -174,7 +174,7 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
 
 ## Key Architectural Decisions
 
-1. **Emulator is use-case agnostic** — Car-specific devices (`CarStateDevice`, `CarControlsDevice`, `SplineDevice`) live in `racing/`, not in `emulator/`. The emulator only provides `RamLike`, `Mmu`, `LogDevice` (buffered), `CpuComponent`, and the plugin.
+1. **Emulator is use-case agnostic** — Car-specific devices (`CarStateDevice`, `CarControlsDevice`, `SplineDevice`) live in `racing/`, not in `emulator/`. The emulator only provides `Device`, `Mmu`, `LogDevice` (buffered), `CpuComponent`, and the plugin.
 
 2. **Each emulator car is fully isolated** — Separate `Hart`, `Dram`, and device instances per car entity. No shared state between emulator instances. Each car has its own `SplineDevice` with a cloned copy of the track spline.
 

@@ -676,11 +676,6 @@ fn dram_size_for_loaded_end(max_load_end: u32) -> u32 {
 pub trait RamLike: Send + Sync {
     fn load(&self, addr: u32, size: u32) -> Result<u32, ()>;
     fn store(&mut self, addr: u32, size: u32, value: u32) -> Result<(), ()>;
-
-    /// Support downcasting to concrete types.
-    fn as_any(&self) -> &dyn Any;
-    /// Support downcasting to concrete types (mutable).
-    fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 /// The dynamic random access dram (DRAM).
@@ -746,14 +741,6 @@ impl RamLike for Dram {
             }
             _ => unreachable!(),
         }
-    }
-
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
     }
 }
 
@@ -836,11 +823,11 @@ impl Dram {
 
 pub struct Mmu<'a> {
     pub dram: &'a mut Dram,
-    pub devices: &'a mut [&'a mut dyn RamLike],
+    pub devices: &'a mut [&'a mut dyn Device],
 }
 
 impl<'a> Mmu<'a> {
-    pub fn new(dram: &'a mut Dram, devices: &'a mut [&'a mut dyn RamLike]) -> Self {
+    pub fn new(dram: &'a mut Dram, devices: &'a mut [&'a mut dyn Device]) -> Self {
         Self { dram, devices }
     }
 }
@@ -875,14 +862,15 @@ impl RamLike for Mmu<'_> {
             Err(())
         }
     }
+}
 
-    fn as_any(&self) -> &dyn Any {
-        unimplemented!("Mmu does not support downcasting")
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        unimplemented!("Mmu does not support downcasting")
-    }
+pub trait Device: Send + Sync {
+    fn load(&self, addr: u32, size: u32) -> Result<u32, ()>;
+    fn store(&mut self, addr: u32, size: u32, value: u32) -> Result<(), ()>;
+    /// Support downcasting to concrete types.
+    fn as_any(&self) -> &dyn Any;
+    /// Support downcasting to concrete types (mutable).
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 /// Memory-mapped log device that captures character output into a buffer.
@@ -916,7 +904,7 @@ impl Default for LogDevice {
     }
 }
 
-impl RamLike for LogDevice {
+impl Device for LogDevice {
     fn load(&self, _addr: u32, _size: u32) -> Result<u32, ()> {
         Ok(0)
     }
@@ -990,14 +978,6 @@ mod tests {
                 _ => return Err(()),
             }
             Ok(())
-        }
-
-        fn as_any(&self) -> &dyn Any {
-            self
-        }
-
-        fn as_any_mut(&mut self) -> &mut dyn Any {
-            self
         }
     }
 

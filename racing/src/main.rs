@@ -516,7 +516,7 @@ fn spawn_car(
     let Some(bot_elf) = bot_elf else {
         panic!("Missing bot ELF bytes for emulator-driven car");
     };
-    let devices: Vec<Box<dyn emulator::cpu::RamLike>> = vec![
+    let devices: Vec<Box<dyn emulator::cpu::Device>> = vec![
         Box::new(LogDevice::new()),
         Box::new(CarStateDevice::default()),
         Box::new(CarControlsDevice::default()),

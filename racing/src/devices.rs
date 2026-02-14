@@ -1,7 +1,7 @@
 use std::any::Any;
 
 use bevy::prelude::*;
-use emulator::cpu::RamLike;
+use emulator::cpu::Device;
 
 use crate::track::TrackSpline;
 
@@ -40,7 +40,7 @@ impl CarStateDevice {
     }
 }
 
-impl RamLike for CarStateDevice {
+impl Device for CarStateDevice {
     fn load(&self, addr: u32, size: u32) -> Result<u32, ()> {
         let addr = addr as usize;
         match size {
@@ -130,7 +130,7 @@ impl CarControlsDevice {
     }
 }
 
-impl RamLike for CarControlsDevice {
+impl Device for CarControlsDevice {
     fn load(&self, addr: u32, size: u32) -> Result<u32, ()> {
         // Allow the bot to read back its own controls
         let addr = addr as usize;
@@ -235,7 +235,7 @@ impl SplineDevice {
     }
 }
 
-impl RamLike for SplineDevice {
+impl Device for SplineDevice {
     fn load(&self, addr: u32, size: u32) -> Result<u32, ()> {
         if size != 32 {
             return Err(());
@@ -323,7 +323,7 @@ impl TrackRadarDevice {
     }
 }
 
-impl RamLike for TrackRadarDevice {
+impl Device for TrackRadarDevice {
     fn load(&self, addr: u32, size: u32) -> Result<u32, ()> {
         let addr = addr as usize;
         match size {
@@ -413,7 +413,7 @@ impl CarRadarDevice {
     }
 }
 
-impl RamLike for CarRadarDevice {
+impl Device for CarRadarDevice {
     fn load(&self, addr: u32, size: u32) -> Result<u32, ()> {
         let addr = addr as usize;
         match size {

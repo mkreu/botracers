@@ -1,5 +1,5 @@
 use emulator::CpuBuilder;
-use emulator::cpu::{Dram, Hart, Instruction, LogDevice, Mmu, RamLike};
+use emulator::cpu::{Device, Dram, Hart, Instruction, LogDevice, Mmu};
 use std::env;
 use std::fs;
 
@@ -21,7 +21,7 @@ fn main() {
 
 fn run_plain(mut cpu: Hart, mut dram: Dram) {
     let mut log = LogDevice::new();
-    let mut devices: Vec<&mut dyn RamLike> = vec![&mut log];
+    let mut devices: Vec<&mut dyn Device> = vec![&mut log];
     let mut mmu = Mmu::new(&mut dram, &mut devices);
     loop {
         // 1. Fetch.
