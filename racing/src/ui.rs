@@ -1,7 +1,8 @@
 use bevy::prelude::*;
 
 use crate::main_game::{
-    CarLabel, DebugGizmos, DriverType, FollowCar, RaceManager, SimState, SpawnCarRequest,
+    BotCompilePipeline, BotProjectBinaries, CarLabel, DebugGizmos, DriverType, FollowCar,
+    RaceManager, SimState, SpawnCarRequest,
 };
 
 /// Plugin that sets up all UI systems.
@@ -16,6 +17,7 @@ impl Plugin for RaceUiPlugin {
                     update_car_list_ui,
                     handle_add_car_button,
                     handle_driver_selector,
+                    update_build_status,
                     handle_remove_car_button,
                     handle_toggle_gizmos_button,
                 ),
@@ -58,6 +60,9 @@ struct DriverSelectorButton;
 
 #[derive(Component)]
 struct DriverSelectorText;
+
+#[derive(Component)]
+struct BuildStatusText;
 
 /// Marks a remove button, storing the car entity it removes.
 #[derive(Component)]
@@ -166,6 +171,13 @@ fn setup_ui(mut commands: Commands) {
                     });
                 });
 
+            panel.spawn((
+                Text::new("Bot build: idle"),
+                BuildStatusText,
+                text_font(12.0),
+                TextColor(LABEL_COLOR),
+            ));
+
             // ── Add Car / Start / Reset row ──
             panel
                 .spawn(Node {
@@ -255,21 +267,31 @@ fn handle_driver_selector(
     query: Query<&Interaction, (Changed<Interaction>, With<DriverSelectorButton>)>,
     mut text_query: Query<&mut Text, With<DriverSelectorText>>,
     mut manager: ResMut<RaceManager>,
+    bot_binaries: Res<BotProjectBinaries>,
 ) {
+    let options = available_driver_options(&bot_binaries);
     for interaction in &query {
         if *interaction == Interaction::Pressed {
-            manager.selected_driver = match manager.selected_driver {
-                DriverType::NativeAI => DriverType::Emulator,
-                DriverType::Emulator => DriverType::NativeAI,
-            };
+            let current_index = options
+                .iter()
+                .position(|driver| *driver == manager.selected_driver)
+                .unwrap_or(0);
+            let next_index = (current_index + 1) % options.len();
+            manager.selected_driver = options[next_index].clone();
+
             for mut text in &mut text_query {
-                text.0 = match manager.selected_driver {
-                    DriverType::NativeAI => "Native AI".into(),
-                    DriverType::Emulator => "Emulator".into(),
-                };
+                text.0 = manager.selected_driver.label();
             }
         }
     }
+}
+
+fn available_driver_options(bot_binaries: &BotProjectBinaries) -> Vec<DriverType> {
+    let mut options = vec![DriverType::NativeAI];
+    for binary in &bot_binaries.binaries {
+        options.push(DriverType::BotBinary(binary.clone()));
+    }
+    options
 }
 
 // ── Add car button ──────────────────────────────────────────────────────────
@@ -287,9 +309,31 @@ fn handle_add_car_button(
     for interaction in &query {
         if *interaction == Interaction::Pressed {
             spawn_events.write(SpawnCarRequest {
-                driver: manager.selected_driver,
+                driver: manager.selected_driver.clone(),
             });
         }
+    }
+}
+
+fn update_build_status(
+    pipeline: Res<BotCompilePipeline>,
+    bot_binaries: Res<BotProjectBinaries>,
+    mut text_query: Query<&mut Text, With<BuildStatusText>>,
+) {
+    if !pipeline.is_changed() && !bot_binaries.is_changed() {
+        return;
+    }
+
+    let message = if let Some(error) = &bot_binaries.load_error {
+        format!("Bot discovery failed: {error}")
+    } else if let Some(status) = &pipeline.status_message {
+        status.clone()
+    } else {
+        "Bot build: idle".to_string()
+    };
+
+    for mut text in &mut text_query {
+        text.0 = message.clone();
     }
 }
 
@@ -450,10 +494,7 @@ fn update_car_list_ui(
         let has_gizmos = gizmo_query.get(entity).is_ok();
         let is_followed = follow.target == Some(entity);
 
-        let driver_label = match entry.driver {
-            DriverType::NativeAI => "AI",
-            DriverType::Emulator => "Emu",
-        };
+        let driver_label = entry.driver.label();
 
         commands.entity(container).with_children(|list| {
             list.spawn((

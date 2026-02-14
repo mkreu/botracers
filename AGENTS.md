@@ -15,27 +15,19 @@ Cargo.toml            # Workspace root — members: racing, emulator. Excludes b
 └── bot/              # no_std RISC-V programs compiled to bare-metal ELF (separate target)
 ```
 
-**Important**: `bot/` is excluded from the workspace because it cross-compiles to `riscv32imafc-unknown-none-elf`. It must be built separately before the racing crate (which embeds the ELF via `include_bytes!`).
+**Important**: `bot/` is excluded from the workspace because it cross-compiles to `riscv32imafc-unknown-none-elf`.
 
 **Important**: Always keep this file up to date when changing code.
 
 ## Build & Run
 
 ```bash
-# 1. Build the bot ELF first (required before racing can compile)
-cd bot && cargo build --release --bin car
-
-# 2. Run the racing game (from workspace root)
+# Run the racing game (from workspace root)
 cargo run --bin racing [-- path/to/track.toml]
 # Default track: racing/assets/track1.toml
 ```
 
-The bot ELF is embedded at compile time in `racing/src/main.rs` via:
-```rust
-const BOT_ELF: &[u8] = include_bytes!("../../bot/target/riscv32imafc-unknown-none-elf/release/car");
-```
-
-If you modify bot code, you must rebuild the bot before rebuilding racing.
+Bot binaries are now discovered at runtime via `cargo metadata` in `bot/`. When adding a bot-driven car, the game compiles the selected bot binary on demand and loads the resulting ELF.
 
 ## Crate Details
 
@@ -115,6 +107,7 @@ cpu.device_as_mut::<CarControlsDevice>(2) // &mut CarControlsDevice
 
 - **`main.rs`** — Bevy app setup, game state management (`SimState`), event-based car spawning, physics, free camera with follow-on-select, two AI systems
 - **`ui.rs`** — `RaceUiPlugin`: right-side panel with driver type selector, add/remove car buttons, start/pause/reset, per-car debug gizmo toggles, per-car follow camera button, scrollable console output (drains `LogDevice` buffers)
+- **`bot_runtime.rs`** — Runtime bot integration helpers: discovers available `bot` binaries via `cargo metadata`, compiles selected binaries (`cargo build --release --bin ... --target riscv32imafc-unknown-none-elf`), and loads produced ELF bytes.
 - **`devices.rs`** — `CarStateDevice`, `CarControlsDevice`, and `SplineDevice` implementing `RamLike` (host-side counterparts to the bot's volatile pointers)
 - **`track.rs`** — `TrackSpline` resource, spline construction, track/kerb mesh generation
 - **`track_format.rs`** — TOML-based track file format (`TrackFile`)
@@ -160,7 +153,7 @@ cpu.device_as_mut::<CarControlsDevice>(2) // &mut CarControlsDevice
 
 3. **Device addressing** — The `Mmu` strips the high bits and passes offset-relative addresses (`addr & 0xFF`) to devices. Devices don't need to know their absolute slot address.
 
-4. **Bot programs are embedded** — The ELF binary is included at compile time via `include_bytes!`. There's no `build.rs` automation; the bot must be built manually first.
+4. **Bot programs are runtime-compiled** — The game discovers bot binaries via `cargo metadata` and compiles the selected binary when the user adds a bot-driven car.
 
 5. **Instruction budget matters** — The `instructions_per_update` value (currently 5000) must be high enough for each bot loop iteration to make progress, but low enough to avoid burning host CPU. The bot now performs window search (50 samples), lookahead walking, and curvature detection each frame.
 
@@ -170,9 +163,11 @@ cpu.device_as_mut::<CarControlsDevice>(2) // &mut CarControlsDevice
 
 8. **Stack/DRAM alignment invariants** — DRAM allocation is rounded to 16-byte alignment with explicit stack headroom, and `sp` is set to a 16-byte aligned top-of-memory minus 16. Keep this when changing loader/builder code.
 
+9. **Pending bot builds are state-gated** — If a bot compile finishes after leaving `PreRace`, the result is discarded and no car is spawned.
+
 ## Common Pitfalls
 
-- **Forgetting to rebuild the bot** — If you change `bot/` code, you must `cd bot && cargo build --release` before rebuilding `racing/`. The `include_bytes!` path won't trigger a rebuild automatically.
+- **Compile latency for bot cars** — Adding a bot-driven car now triggers a build. Failures are surfaced in the UI status line and the car is not spawned on failure.
 - **Device index vs slot address** — Device index 0 = address 0x100, index 1 = 0x200, etc. Off-by-one errors here will silently read zeros or fail.
 - **Mmu passes offsets, not absolute addresses** — If you implement a new device, your `load`/`store` will receive `addr & 0xFF`, not the full address.
 - **`instructions_per_update` tuning** — Too low and the bot can't complete a loop iteration per tick. Too high and it burns CPU time.

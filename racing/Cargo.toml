@@ -15,6 +15,7 @@ path = "src/bin/editor.rs"
 avian2d = "0.5.0"
 bevy = "0.18"
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 toml = "0.8"
 rfd = "0.15"
 

@@ -1,4 +1,9 @@
-use std::f32::consts::PI;
+use std::{
+    collections::HashMap,
+    f32::consts::PI,
+    sync::{Mutex, mpsc},
+    thread,
+};
 
 use avian2d::prelude::{forces::ForcesItem, *};
 use bevy::{
@@ -10,14 +15,12 @@ use bevy::{
 use emulator::bevy::{CpuComponent, cpu_system};
 use emulator::cpu::LogDevice;
 
+use racing::bot_runtime;
 use racing::devices::{CarControlsDevice, CarStateDevice, SplineDevice};
 use racing::track;
 use racing::track_format::TrackFile;
 
 mod ui;
-
-/// Pre-built RISC-V ELF binary for the bot car AI.
-const BOT_ELF: &[u8] = include_bytes!("../../bot/target/riscv32imafc-unknown-none-elf/release/car");
 
 // Re-export types used by the UI module.
 pub(crate) use main_game::*;
@@ -69,10 +72,46 @@ mod main_game {
         pub console_output: String,
     }
 
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    #[derive(Debug, Clone, PartialEq, Eq)]
     pub enum DriverType {
         NativeAI,
-        Emulator,
+        BotBinary(String),
+    }
+
+    impl DriverType {
+        pub fn label(&self) -> String {
+            match self {
+                DriverType::NativeAI => "Native AI".to_string(),
+                DriverType::BotBinary(binary) => format!("Bot: {binary}"),
+            }
+        }
+    }
+
+    #[derive(Resource, Default)]
+    pub struct BotProjectBinaries {
+        pub binaries: Vec<String>,
+        pub load_error: Option<String>,
+    }
+
+    #[derive(Clone)]
+    pub struct CompileRequest {
+        pub id: u64,
+        pub binary: String,
+    }
+
+    pub struct CompileResult {
+        pub id: u64,
+        pub binary: String,
+        pub result: Result<Vec<u8>, String>,
+    }
+
+    #[derive(Resource)]
+    pub struct BotCompilePipeline {
+        pub request_tx: mpsc::Sender<CompileRequest>,
+        pub result_rx: Mutex<mpsc::Receiver<CompileResult>>,
+        pub pending: HashMap<u64, DriverType>,
+        pub next_request_id: u64,
+        pub status_message: Option<String>,
     }
 
     #[derive(Resource, Default)]
@@ -97,6 +136,9 @@ fn main() {
         .nth(1)
         .unwrap_or_else(|| "racing/assets/track1.toml".to_string());
 
+    let bot_binaries = load_bot_project_binaries();
+    let compile_pipeline = create_compile_pipeline();
+
     App::new()
         .add_plugins((
             DefaultPlugins,
@@ -111,6 +153,8 @@ fn main() {
             std::time::Duration::from_secs_f32(1.0 / 200.0),
         ))
         .insert_resource(TrackPath(track_path))
+        .insert_resource(bot_binaries)
+        .insert_resource(compile_pipeline)
         .insert_resource(RaceManager::default())
         .insert_resource(FollowCar::default())
         .add_systems(Startup, (setup_track, setup.after(setup_track)))
@@ -121,7 +165,7 @@ fn main() {
         .add_systems(OnEnter(SimState::Paused), pause_physics)
         .add_systems(OnEnter(SimState::PreRace), pause_physics)
         // Spawning: always active so cars can be added in PreRace
-        .add_systems(Update, handle_spawn_car_event)
+        .add_systems(Update, (handle_spawn_car_event, process_compiled_bot_results))
         // Keyboard driving: always active (only affects non-AI, non-emulator cars)
         .add_systems(Update, handle_car_input)
         // AI + emulator: only run while Racing
@@ -152,6 +196,44 @@ struct TrackPath(String);
 
 const WHEEL_BASE: f32 = 1.18;
 const WHEEL_TRACK: f32 = 0.95;
+
+fn load_bot_project_binaries() -> BotProjectBinaries {
+    match bot_runtime::discover_bot_binaries() {
+        Ok(binaries) => BotProjectBinaries {
+            binaries,
+            load_error: None,
+        },
+        Err(error) => BotProjectBinaries {
+            binaries: Vec::new(),
+            load_error: Some(error),
+        },
+    }
+}
+
+fn create_compile_pipeline() -> BotCompilePipeline {
+    let (request_tx, request_rx) = mpsc::channel::<CompileRequest>();
+    let (result_tx, result_rx) = mpsc::channel::<CompileResult>();
+    let bot_dir = bot_runtime::bot_project_dir();
+
+    thread::spawn(move || {
+        while let Ok(request) = request_rx.recv() {
+            let result = bot_runtime::compile_bot_binary_and_read_elf(&bot_dir, &request.binary);
+            let _ = result_tx.send(CompileResult {
+                id: request.id,
+                binary: request.binary,
+                result,
+            });
+        }
+    });
+
+    BotCompilePipeline {
+        request_tx,
+        result_rx: Mutex::new(result_rx),
+        pending: HashMap::new(),
+        next_request_id: 1,
+        status_message: None,
+    }
+}
 
 fn setup_track(
     mut commands: Commands,
@@ -281,33 +363,136 @@ fn handle_spawn_car_event(
     track_path: Res<TrackPath>,
     track_spline: Res<track::TrackSpline>,
     mut manager: ResMut<RaceManager>,
+    mut compile_pipeline: ResMut<BotCompilePipeline>,
+    state: Res<State<SimState>>,
 ) {
-    for event in events.read() {
-        let car_index = manager.cars.len();
-        let offset = grid_offset(car_index);
-
-        let track_file = TrackFile::load(std::path::Path::new(&track_path.0))
-            .unwrap_or_else(|_| panic!("Failed to load track file: {}", track_path.0));
-        let start_point = track::first_point_from_file(&track_file);
-
-        let position = start_point + offset;
-        let car_name = format!("Car {}", manager.next_car_id);
-        let entity = spawn_car(
-            &mut commands,
-            &asset_server,
-            position,
-            event.driver,
-            &track_spline,
-            &car_name,
-        );
-        manager.cars.push(CarEntry {
-            entity,
-            name: car_name,
-            driver: event.driver,
-            console_output: String::new(),
-        });
-        manager.next_car_id += 1;
+    if *state.get() != SimState::PreRace {
+        return;
     }
+
+    for event in events.read() {
+        match &event.driver {
+            DriverType::NativeAI => {
+                spawn_car_entry(
+                    &mut commands,
+                    &asset_server,
+                    &track_path,
+                    &track_spline,
+                    &mut manager,
+                    event.driver.clone(),
+                    None,
+                );
+            }
+            DriverType::BotBinary(binary) => {
+                let request_id = compile_pipeline.next_request_id;
+                compile_pipeline.next_request_id += 1;
+                compile_pipeline.pending.insert(request_id, event.driver.clone());
+                compile_pipeline.status_message = Some(format!("Compiling bot binary '{binary}'..."));
+
+                if compile_pipeline
+                    .request_tx
+                    .send(CompileRequest {
+                        id: request_id,
+                        binary: binary.clone(),
+                    })
+                    .is_err()
+                {
+                    compile_pipeline.pending.remove(&request_id);
+                    compile_pipeline.status_message =
+                        Some("Failed to queue bot compile request".to_string());
+                }
+            }
+        }
+    }
+}
+
+fn process_compiled_bot_results(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    track_path: Res<TrackPath>,
+    track_spline: Res<track::TrackSpline>,
+    mut manager: ResMut<RaceManager>,
+    mut compile_pipeline: ResMut<BotCompilePipeline>,
+    state: Res<State<SimState>>,
+) {
+    let mut results = Vec::new();
+    if let Ok(receiver) = compile_pipeline.result_rx.lock() {
+        while let Ok(result) = receiver.try_recv() {
+            results.push(result);
+        }
+    }
+
+    for result in results {
+        let Some(driver) = compile_pipeline.pending.remove(&result.id) else {
+            continue;
+        };
+
+        match result.result {
+            Ok(elf_bytes) => {
+                if *state.get() != SimState::PreRace {
+                    compile_pipeline.status_message = Some(format!(
+                        "Discarded compiled '{}' result (race already started)",
+                        result.binary
+                    ));
+                    continue;
+                }
+
+                spawn_car_entry(
+                    &mut commands,
+                    &asset_server,
+                    &track_path,
+                    &track_spline,
+                    &mut manager,
+                    driver,
+                    Some(elf_bytes),
+                );
+                compile_pipeline.status_message =
+                    Some(format!("Compiled and spawned '{}'", result.binary));
+            }
+            Err(error) => {
+                compile_pipeline.status_message = Some(format!(
+                    "Compile failed for '{}': {}",
+                    result.binary, error
+                ));
+            }
+        }
+    }
+}
+
+fn spawn_car_entry(
+    commands: &mut Commands,
+    asset_server: &AssetServer,
+    track_path: &TrackPath,
+    track_spline: &track::TrackSpline,
+    manager: &mut RaceManager,
+    driver: DriverType,
+    elf_bytes: Option<Vec<u8>>,
+) {
+    let car_index = manager.cars.len();
+    let offset = grid_offset(car_index);
+
+    let track_file = TrackFile::load(std::path::Path::new(&track_path.0))
+        .unwrap_or_else(|_| panic!("Failed to load track file: {}", track_path.0));
+    let start_point = track::first_point_from_file(&track_file);
+
+    let position = start_point + offset;
+    let car_name = format!("Car {}", manager.next_car_id);
+    let entity = spawn_car(
+        commands,
+        asset_server,
+        position,
+        driver.clone(),
+        track_spline,
+        &car_name,
+        elf_bytes.as_deref(),
+    );
+    manager.cars.push(CarEntry {
+        entity,
+        name: car_name,
+        driver,
+        console_output: String::new(),
+    });
+    manager.next_car_id += 1;
 }
 
 fn spawn_car(
@@ -317,6 +502,7 @@ fn spawn_car(
     driver: DriverType,
     track_spline: &track::TrackSpline,
     name: &str,
+    bot_elf: Option<&[u8]>,
 ) -> Entity {
     let sprite_scale = Vec3::splat(0.008);
 
@@ -342,14 +528,17 @@ fn spawn_car(
         DriverType::NativeAI => {
             entity.insert(AIDriver { target_t: 0.0 });
         }
-        DriverType::Emulator => {
+        DriverType::BotBinary(_) => {
+            let Some(bot_elf) = bot_elf else {
+                panic!("Missing bot ELF bytes for emulator-driven car");
+            };
             let devices: Vec<Box<dyn emulator::cpu::RamLike>> = vec![
                 Box::new(LogDevice::new()),
                 Box::new(CarStateDevice::default()),
                 Box::new(CarControlsDevice::default()),
                 Box::new(SplineDevice::new(track_spline)),
             ];
-            let cpu = CpuComponent::new(BOT_ELF, devices, 10000);
+            let cpu = CpuComponent::new(bot_elf, devices, 10000);
             entity.insert((EmulatorDriver, cpu));
         }
     }
