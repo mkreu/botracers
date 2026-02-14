@@ -12,6 +12,8 @@ pub const SLOT1: usize = 0x100;
 pub const SLOT2: usize = 0x200;
 pub const SLOT3: usize = 0x300;
 pub const SLOT4: usize = 0x400;
+pub const SLOT5: usize = 0x500;
+pub const SLOT6: usize = 0x600;
 
 pub fn log() -> Log {
     Log::bind(SLOT1)

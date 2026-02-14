@@ -103,3 +103,123 @@ impl SplineQuery {
         }
     }
 }
+
+pub struct TrackRadar {
+    distances: [*const f32; 7],
+}
+
+impl TrackRadar {
+    pub const fn bind(slot: usize) -> Self {
+        Self {
+            distances: [
+                (slot + 0x00) as *const f32,
+                (slot + 0x04) as *const f32,
+                (slot + 0x08) as *const f32,
+                (slot + 0x0C) as *const f32,
+                (slot + 0x10) as *const f32,
+                (slot + 0x14) as *const f32,
+                (slot + 0x18) as *const f32,
+            ],
+        }
+    }
+
+    pub fn distances(&self) -> [f32; 7] {
+        unsafe {
+            [
+                ptr::read_volatile(self.distances[0]),
+                ptr::read_volatile(self.distances[1]),
+                ptr::read_volatile(self.distances[2]),
+                ptr::read_volatile(self.distances[3]),
+                ptr::read_volatile(self.distances[4]),
+                ptr::read_volatile(self.distances[5]),
+                ptr::read_volatile(self.distances[6]),
+            ]
+        }
+    }
+
+    pub fn distance(&self, index: usize) -> f32 {
+        if index >= self.distances.len() {
+            return f32::NAN;
+        }
+
+        unsafe { ptr::read_volatile(self.distances[index]) }
+    }
+}
+
+pub struct CarRadar {
+    car_x: [*const f32; 4],
+    car_y: [*const f32; 4],
+}
+
+impl CarRadar {
+    pub const fn bind(slot: usize) -> Self {
+        Self {
+            car_x: [
+                (slot + 0x00) as *const f32,
+                (slot + 0x08) as *const f32,
+                (slot + 0x10) as *const f32,
+                (slot + 0x18) as *const f32,
+            ],
+            car_y: [
+                (slot + 0x04) as *const f32,
+                (slot + 0x0C) as *const f32,
+                (slot + 0x14) as *const f32,
+                (slot + 0x1C) as *const f32,
+            ],
+        }
+    }
+
+    /// Returns up to 4 absolute car positions, nearest-first.
+    /// Empty slots are reported as None (NaN encoded in MMIO).
+    pub fn positions(&self) -> [Option<Vec2>; 4] {
+        unsafe {
+            let x0 = ptr::read_volatile(self.car_x[0]);
+            let y0 = ptr::read_volatile(self.car_y[0]);
+            let x1 = ptr::read_volatile(self.car_x[1]);
+            let y1 = ptr::read_volatile(self.car_y[1]);
+            let x2 = ptr::read_volatile(self.car_x[2]);
+            let y2 = ptr::read_volatile(self.car_y[2]);
+            let x3 = ptr::read_volatile(self.car_x[3]);
+            let y3 = ptr::read_volatile(self.car_y[3]);
+
+            [
+                if x0.is_nan() || y0.is_nan() {
+                    None
+                } else {
+                    Some(Vec2::new(x0, y0))
+                },
+                if x1.is_nan() || y1.is_nan() {
+                    None
+                } else {
+                    Some(Vec2::new(x1, y1))
+                },
+                if x2.is_nan() || y2.is_nan() {
+                    None
+                } else {
+                    Some(Vec2::new(x2, y2))
+                },
+                if x3.is_nan() || y3.is_nan() {
+                    None
+                } else {
+                    Some(Vec2::new(x3, y3))
+                },
+            ]
+        }
+    }
+
+    pub fn position(&self, index: usize) -> Option<Vec2> {
+        if index >= self.car_x.len() {
+            return None;
+        }
+
+        unsafe {
+            let x = ptr::read_volatile(self.car_x[index]);
+            let y = ptr::read_volatile(self.car_y[index]);
+            if x.is_nan() || y.is_nan() {
+                None
+            } else {
+                Some(Vec2::new(x, y))
+            }
+        }
+    }
+}

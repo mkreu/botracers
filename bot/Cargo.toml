@@ -28,6 +28,13 @@ test = false
 doctest = false
 bench = false
 
+[[bin]]
+name = "car_radar"
+path = "src/bin/car_radar.rs"
+test = false
+doctest = false
+bench = false
+
 [dependencies]
 bevy_math = { version = "0.18", default-features = false, features = ["libm"] }
 

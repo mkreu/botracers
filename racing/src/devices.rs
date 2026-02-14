@@ -285,3 +285,180 @@ impl RamLike for SplineDevice {
         self
     }
 }
+
+/// Memory-mapped device exposing distances to track borders along 7 forward rays.
+/// Mapped at SLOT5 (0x500-0x5FF). The bot reads from this device.
+///
+/// Layout (all f32, little-endian):
+///   0x00: ray_0_distance
+///   0x04: ray_1_distance
+///   0x08: ray_2_distance
+///   0x0C: ray_3_distance
+///   0x10: ray_4_distance
+///   0x14: ray_5_distance
+///   0x18: ray_6_distance
+///
+/// Distances are nearest-hit distances in world units. If a ray has no hit,
+/// the value is NaN.
+pub struct TrackRadarDevice {
+    data: [u8; 28], // 7 × f32
+}
+
+impl Default for TrackRadarDevice {
+    fn default() -> Self {
+        Self {
+            data: [0u8; 28],
+        }
+    }
+}
+
+impl TrackRadarDevice {
+    fn write_f32(&mut self, offset: usize, value: f32) {
+        let bytes = value.to_le_bytes();
+        self.data[offset..offset + 4].copy_from_slice(&bytes);
+    }
+
+    pub fn update(&mut self, distances: [f32; 7]) {
+        for (i, distance) in distances.into_iter().enumerate() {
+            self.write_f32(i * 4, distance);
+        }
+    }
+}
+
+impl RamLike for TrackRadarDevice {
+    fn load(&self, addr: u32, size: u32) -> Result<u32, ()> {
+        let addr = addr as usize;
+        match size {
+            8 => {
+                if addr < self.data.len() {
+                    Ok(self.data[addr] as u32)
+                } else {
+                    Ok(0)
+                }
+            }
+            16 => {
+                if addr + 1 < self.data.len() {
+                    Ok((self.data[addr] as u32) | ((self.data[addr + 1] as u32) << 8))
+                } else {
+                    Ok(0)
+                }
+            }
+            32 => {
+                if addr + 3 < self.data.len() {
+                    Ok((self.data[addr] as u32)
+                        | ((self.data[addr + 1] as u32) << 8)
+                        | ((self.data[addr + 2] as u32) << 16)
+                        | ((self.data[addr + 3] as u32) << 24))
+                } else {
+                    Ok(0)
+                }
+            }
+            _ => Err(()),
+        }
+    }
+
+    fn store(&mut self, _addr: u32, _size: u32, _value: u32) -> Result<(), ()> {
+        // Track radar is read-only from the bot's perspective; silently ignore writes.
+        Ok(())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}
+
+/// Memory-mapped device exposing absolute positions of up to the 4 nearest cars.
+/// Mapped at SLOT6 (0x600-0x6FF). The bot reads from this device.
+///
+/// Layout (all f32, little-endian), nearest-first, excluding self:
+///   0x00: car0_x
+///   0x04: car0_y
+///   0x08: car1_x
+///   0x0C: car1_y
+///   0x10: car2_x
+///   0x14: car2_y
+///   0x18: car3_x
+///   0x1C: car3_y
+///
+/// Missing entries are encoded as NaN/NaN.
+pub struct CarRadarDevice {
+    data: [u8; 32], // 8 × f32
+}
+
+impl Default for CarRadarDevice {
+    fn default() -> Self {
+        Self {
+            data: [0u8; 32],
+        }
+    }
+}
+
+impl CarRadarDevice {
+    fn write_f32(&mut self, offset: usize, value: f32) {
+        let bytes = value.to_le_bytes();
+        self.data[offset..offset + 4].copy_from_slice(&bytes);
+    }
+
+    pub fn update(&mut self, nearest_positions: [Option<Vec2>; 4]) {
+        for (i, maybe_pos) in nearest_positions.into_iter().enumerate() {
+            let base = i * 8;
+            if let Some(pos) = maybe_pos {
+                self.write_f32(base, pos.x);
+                self.write_f32(base + 4, pos.y);
+            } else {
+                self.write_f32(base, f32::NAN);
+                self.write_f32(base + 4, f32::NAN);
+            }
+        }
+    }
+}
+
+impl RamLike for CarRadarDevice {
+    fn load(&self, addr: u32, size: u32) -> Result<u32, ()> {
+        let addr = addr as usize;
+        match size {
+            8 => {
+                if addr < self.data.len() {
+                    Ok(self.data[addr] as u32)
+                } else {
+                    Ok(0)
+                }
+            }
+            16 => {
+                if addr + 1 < self.data.len() {
+                    Ok((self.data[addr] as u32) | ((self.data[addr + 1] as u32) << 8))
+                } else {
+                    Ok(0)
+                }
+            }
+            32 => {
+                if addr + 3 < self.data.len() {
+                    Ok((self.data[addr] as u32)
+                        | ((self.data[addr + 1] as u32) << 8)
+                        | ((self.data[addr + 2] as u32) << 16)
+                        | ((self.data[addr + 3] as u32) << 24))
+                } else {
+                    Ok(0)
+                }
+            }
+            _ => Err(()),
+        }
+    }
+
+    fn store(&mut self, _addr: u32, _size: u32, _value: u32) -> Result<(), ()> {
+        // Car radar is read-only from the bot's perspective; silently ignore writes.
+        Ok(())
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
+}

@@ -205,3 +205,39 @@ pub fn create_kerb_meshes(
 
     (inner_mesh, outer_mesh)
 }
+
+/// Sample inner and outer track borders as closed polylines.
+///
+/// This uses spline tangents with neighboring samples to compute a stable normal,
+/// then offsets by half the track width on both sides.
+pub fn sample_track_borders(
+    spline: &CubicCurve<Vec2>,
+    track_width: f32,
+    segments: usize,
+) -> (Vec<Vec2>, Vec<Vec2>) {
+    let domain = spline.domain();
+    let t_max = domain.end();
+    let mut inner = Vec::with_capacity(segments);
+    let mut outer = Vec::with_capacity(segments);
+
+    for i in 0..segments {
+        let i_prev = if i == 0 { segments - 1 } else { i - 1 };
+        let i_next = (i + 1) % segments;
+
+        let t_prev = (i_prev as f32 / segments as f32) * t_max;
+        let t = (i as f32 / segments as f32) * t_max;
+        let t_next = (i_next as f32 / segments as f32) * t_max;
+
+        let p_prev = spline.position(t_prev);
+        let p = spline.position(t);
+        let p_next = spline.position(t_next);
+
+        let tangent = (p_next - p_prev).normalize();
+        let normal = vec2(-tangent.y, tangent.x);
+
+        inner.push(p - normal * track_width * 0.5);
+        outer.push(p + normal * track_width * 0.5);
+    }
+
+    (inner, outer)
+}

@@ -16,7 +16,9 @@ use emulator::bevy::{CpuComponent, cpu_system};
 use emulator::cpu::LogDevice;
 
 use racing::bot_runtime;
-use racing::devices::{CarControlsDevice, CarStateDevice, SplineDevice};
+use racing::devices::{
+    CarControlsDevice, CarRadarDevice, CarStateDevice, SplineDevice, TrackRadarDevice,
+};
 use racing::track;
 use racing::track_format::TrackFile;
 
@@ -194,8 +196,17 @@ fn main() {
 #[derive(Resource)]
 struct TrackPath(String);
 
+#[derive(Resource)]
+struct TrackRadarBorders {
+    inner: Vec<Vec2>,
+    outer: Vec<Vec2>,
+}
+
 const WHEEL_BASE: f32 = 1.18;
 const WHEEL_TRACK: f32 = 0.95;
+const TRACK_RADAR_RAY_COUNT: usize = 7;
+const TRACK_RADAR_CONE_HALF_ANGLE_RAD: f32 = PI * 0.25;
+const TRACK_RADAR_MAX_DISTANCE: f32 = 200.0;
 
 fn load_bot_project_binaries() -> BotProjectBinaries {
     match bot_runtime::discover_bot_binaries() {
@@ -259,6 +270,11 @@ fn setup_track(
 
     commands.insert_resource(track::TrackSpline {
         spline: spline.clone(),
+    });
+    let (inner_border, outer_border) = track::sample_track_borders(&spline, track_width, 1000);
+    commands.insert_resource(TrackRadarBorders {
+        inner: inner_border,
+        outer: outer_border,
     });
 
     // Track surface
@@ -537,6 +553,8 @@ fn spawn_car(
                 Box::new(CarStateDevice::default()),
                 Box::new(CarControlsDevice::default()),
                 Box::new(SplineDevice::new(track_spline)),
+                Box::new(TrackRadarDevice::default()),
+                Box::new(CarRadarDevice::default()),
             ];
             let cpu = CpuComponent::new(bot_elf, devices, 10000);
             entity.insert((EmulatorDriver, cpu));
@@ -771,9 +789,19 @@ fn update_ai_driver(
 
 /// Runs BEFORE cpu_system: writes car state into the emulator's CarStateDevice.
 fn update_emulator_driver(
-    mut emu_query: Query<(&Transform, &LinearVelocity, &mut CpuComponent), With<EmulatorDriver>>,
+    borders: Res<TrackRadarBorders>,
+    all_cars: Query<(Entity, &Transform), With<Car>>,
+    mut emu_query: Query<
+        (Entity, &Transform, &LinearVelocity, &mut CpuComponent),
+        With<EmulatorDriver>,
+    >,
 ) {
-    for (transform, velocity, mut cpu) in &mut emu_query {
+    let car_positions: Vec<(Entity, Vec2)> = all_cars
+        .iter()
+        .map(|(entity, transform)| (entity, transform.translation.xy()))
+        .collect();
+
+    for (entity, transform, velocity, mut cpu) in &mut emu_query {
         let car_pos = transform.translation.xy();
         let car_forward = transform.up().xy().normalize();
         let car_speed = velocity.length();
@@ -781,7 +809,131 @@ fn update_emulator_driver(
         if let Some(state_dev) = cpu.device_as_mut::<CarStateDevice>(1) {
             state_dev.update(car_speed, car_pos, car_forward);
         }
+
+        if let Some(track_radar_dev) = cpu.device_as_mut::<TrackRadarDevice>(4) {
+            track_radar_dev.update(compute_track_radar_distances(
+                car_pos,
+                car_forward,
+                &borders,
+            ));
+        }
+
+        if let Some(car_radar_dev) = cpu.device_as_mut::<CarRadarDevice>(5) {
+            car_radar_dev.update(compute_nearest_car_positions(entity, car_pos, &car_positions));
+        }
     }
+}
+
+fn compute_track_radar_distances(
+    origin: Vec2,
+    forward: Vec2,
+    borders: &TrackRadarBorders,
+) -> [f32; TRACK_RADAR_RAY_COUNT] {
+    let mut distances = [f32::NAN; TRACK_RADAR_RAY_COUNT];
+
+    for (ray_index, distance_slot) in distances.iter_mut().enumerate() {
+        let t = if TRACK_RADAR_RAY_COUNT <= 1 {
+            0.5
+        } else {
+            ray_index as f32 / (TRACK_RADAR_RAY_COUNT - 1) as f32
+        };
+        let angle = -TRACK_RADAR_CONE_HALF_ANGLE_RAD + t * (2.0 * TRACK_RADAR_CONE_HALF_ANGLE_RAD);
+        let ray_direction = Vec2::from_angle(angle).rotate(forward).normalize();
+
+        let mut best = f32::INFINITY;
+        best = best.min(closest_intersection_in_polyline(
+            origin,
+            ray_direction,
+            &borders.inner,
+            TRACK_RADAR_MAX_DISTANCE,
+        ));
+        best = best.min(closest_intersection_in_polyline(
+            origin,
+            ray_direction,
+            &borders.outer,
+            TRACK_RADAR_MAX_DISTANCE,
+        ));
+
+        if best.is_finite() {
+            *distance_slot = best;
+        }
+    }
+
+    distances
+}
+
+fn closest_intersection_in_polyline(
+    ray_origin: Vec2,
+    ray_direction: Vec2,
+    polyline: &[Vec2],
+    max_distance: f32,
+) -> f32 {
+    if polyline.len() < 2 {
+        return f32::INFINITY;
+    }
+
+    let mut best = f32::INFINITY;
+    for i in 0..polyline.len() {
+        let a = polyline[i];
+        let b = polyline[(i + 1) % polyline.len()];
+        if let Some(distance) = ray_segment_intersection_distance(ray_origin, ray_direction, a, b) {
+            if distance <= max_distance {
+                best = best.min(distance);
+            }
+        }
+    }
+
+    best
+}
+
+fn ray_segment_intersection_distance(
+    ray_origin: Vec2,
+    ray_direction: Vec2,
+    segment_start: Vec2,
+    segment_end: Vec2,
+) -> Option<f32> {
+    let v1 = segment_start - ray_origin;
+    let v2 = segment_end - segment_start;
+    let denom = ray_direction.perp_dot(v2);
+
+    if denom.abs() < 1e-6 {
+        return None;
+    }
+
+    let t = v1.perp_dot(v2) / denom;
+    let u = v1.perp_dot(ray_direction) / denom;
+
+    if t >= 0.0 && (0.0..=1.0).contains(&u) {
+        Some(t)
+    } else {
+        None
+    }
+}
+
+fn compute_nearest_car_positions(
+    self_entity: Entity,
+    self_position: Vec2,
+    all_car_positions: &[(Entity, Vec2)],
+) -> [Option<Vec2>; 4] {
+    let mut nearest: Vec<(f32, Vec2)> = all_car_positions
+        .iter()
+        .filter_map(|(entity, position)| {
+            if *entity == self_entity {
+                None
+            } else {
+                Some((self_position.distance_squared(*position), *position))
+            }
+        })
+        .collect();
+
+    nearest.sort_by(|a, b| a.0.total_cmp(&b.0));
+
+    let mut result = [None, None, None, None];
+    for (slot, (_, position)) in nearest.into_iter().take(4).enumerate() {
+        result[slot] = Some(position);
+    }
+
+    result
 }
 
 /// Runs AFTER cpu_system: reads the bot's control outputs and applies them.
