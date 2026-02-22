@@ -58,6 +58,11 @@ impl TrackFile {
         }
     }
 
+    pub fn load_builtin() -> Result<Self, String> {
+        let text = include_str!("../assets/track1.toml");
+        toml::from_str(&text).map_err(|e| format!("Failed to parse track1.toml: {}", e))
+    }
+
     /// Load a track from a TOML file.
     pub fn load(path: &Path) -> Result<Self, String> {
         let text = std::fs::read_to_string(path)

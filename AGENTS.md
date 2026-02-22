@@ -11,7 +11,7 @@ Cargo.toml            # Workspace root — members: racing, emulator, race-proto
 ├── racing/           # Bevy game — physics, rendering, car spawning, AI systems
 ├── emulator/         # Use-case-agnostic RISC-V emulator (RV32IMAFC + RV32C/Zcf) with Bevy integration
 ├── race-protocol/    # Shared API DTOs used by backend/client/game/extension
-├── racehub/          # Minimal backend (auth + artifact storage/list/download)
+├── racehub/          # Minimal backend (auth + artifact storage/list/download/delete)
 ├── vscode-extension/ # VSCode extension for artifact upload (not a Cargo crate)
 └── bot/              # no_std RISC-V programs compiled to bare-metal ELF (separate target)
 ```
@@ -160,6 +160,7 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
   - `GET /api/v1/artifacts`
   - `POST /api/v1/artifacts`
   - `GET /api/v1/artifacts/{id}`
+  - `DELETE /api/v1/artifacts/{id}`
 - Uses session tokens stored in SQLite and accepts either:
   - `Authorization: Bearer <token>` (VSCode extension / native clients)
   - `racehub_session` cookie (browser/web game flow)
@@ -168,7 +169,7 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
   - `disabled` (standalone mode, implicit local user)
 - `RACEHUB_COOKIE_SECURE` controls whether the session cookie is marked `Secure`.
 - `RACEHUB_STATIC_DIR` controls which static directory is served (default `web-dist`; empty disables static serving).
-- Backend scope is intentionally minimal: auth + artifact storage/list/download.
+- Backend scope is intentionally minimal: auth + artifact storage/list/download/delete.
 
 ### `vscode-extension/` — Artifact Upload Connector
 
@@ -182,7 +183,7 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
 ### `racing/` — The Game
 
 - **`main.rs`** — Bevy app setup, game state management (`SimState`), event-based car spawning, physics, free camera with follow-on-select, two AI systems
-- **`ui.rs`** — `RaceUiPlugin`: right-side panel with artifact selector, refresh/upload artifact buttons, add/remove car buttons, start/pause/reset, per-car debug gizmo toggles, per-car follow camera button, and console output.
+- **`ui.rs`** — `RaceUiPlugin`: right-side panel with persistent server status dialog, refresh/upload artifact buttons, artifact list with per-artifact spawn/delete buttons, start/pause/reset, spawned-car controls (follow/gizmos/remove), and console output.
 - **`devices.rs`** — `CarStateDevice`, `CarControlsDevice`, `SplineDevice`, `TrackRadarDevice`, and `CarRadarDevice` implementing `Device` (host-side counterparts to the bot's volatile pointers and their uptate systems for bevy logic)
 - **`track.rs`** — `TrackSpline` resource, spline construction, track/kerb mesh generation
 - **`track_format.rs`** — TOML-based track file format (`TrackFile`)
@@ -193,7 +194,8 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
   - browser-cookie-based auth for wasm/web builds (no in-game login fields)
   - loading artifact lists
   - manual artifact upload from file chooser (native + web)
-  - selecting remote artifacts as drivers (`DriverType::RemoteArtifact`) and downloading ELF via HTTP for spawning
+  - deleting artifacts from RaceHub storage
+  - spawning cars directly from artifact list rows (`DriverType::RemoteArtifact`) by downloading ELF via HTTP
 
 **Key components:**
 - `Car` — steering, accelerator, brake state (used by physics)
@@ -205,12 +207,12 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
 - `FrontWheel` — visual wheel rotation marker
 
 **Key resources:**
-- `RaceManager` — tracks all spawned cars (`Vec<CarEntry>`), selected driver type, next car ID, and per-car console output
+- `RaceManager` — tracks all spawned cars (`Vec<CarEntry>`), next car ID, and per-car console output
 - `FollowCar` — optional entity to follow with the camera
 - `SimState` — state machine: `PreRace` (add/remove cars) → `Racing` (simulation active) → `Paused` (toggle)
 
 **Key messages (Bevy 0.18 `Message` trait, not `Event`):**
-- `SpawnCarRequest { driver: DriverType }` — sent by UI "Add Car" button, consumed by `handle_spawn_car_event`
+- `SpawnCarRequest { driver: DriverType }` — sent by artifact-row "Spawn" button, consumed by `handle_spawn_car_event`
 
 **System execution order:**
 1. `Update`: `handle_car_input` (keyboard → `Car`, excludes AI/emulator cars)
@@ -223,7 +225,7 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
    - `apply_car_forces` — applies `Car` state to physics forces
 3. `Update` (always): UI systems (car list rebuild, button handlers, console output drain), `update_camera`, `draw_gizmos`, `update_fps_counter`
 
-**Car spawning** — Event-driven via `SpawnCarRequest` message. The UI sends a `SpawnCarRequest` with a `DriverType`; `handle_spawn_car_event` creates the car entity with staggered grid positioning. Cars can only be added/removed in `PreRace` state. Each emulator car gets its own isolated CPU (`CpuComponent`) and isolated MMIO device components; each car has its own `SplineDevice` with a cloned copy of the track spline.
+**Car spawning** — Event-driven via `SpawnCarRequest` message. The artifact list UI sends a `SpawnCarRequest` with a `DriverType`; `handle_spawn_car_event` creates the car entity with staggered grid positioning. Cars can only be added/removed in `PreRace` state. Each emulator car gets its own isolated CPU (`CpuComponent`) and isolated MMIO device components; each car has its own `SplineDevice` with a cloned copy of the track spline.
 
 **Camera** — Free camera by default (no cars spawned at startup). Middle/right-mouse drag to pan, scroll to zoom. When a car is selected via the UI "follow" button, the camera snaps to it; clicking again unfollows.
 

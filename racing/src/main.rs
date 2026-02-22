@@ -63,6 +63,7 @@ mod main_game {
         RefreshCapabilities,
         LoadArtifacts,
         UploadArtifact,
+        DeleteArtifact { id: i64 },
     }
 
     // ── Resources ───────────────────────────────────────────────────────
@@ -70,7 +71,6 @@ mod main_game {
     #[derive(Resource)]
     pub struct RaceManager {
         pub cars: Vec<CarEntry>,
-        pub selected_driver: Option<DriverType>,
         pub next_car_id: u32,
     }
 
@@ -78,7 +78,6 @@ mod main_game {
         fn default() -> Self {
             Self {
                 cars: Vec::new(),
-                selected_driver: None,
                 next_car_id: 1,
             }
         }
@@ -130,6 +129,10 @@ mod main_game {
         Login(Result<LoginResponse, String>),
         Artifacts(Result<Vec<ArtifactSummary>, String>),
         UploadResult(Result<UploadArtifactResponse, String>),
+        DeleteResult {
+            artifact_id: i64,
+            result: Result<(), String>,
+        },
     }
 
     #[derive(Resource, Clone)]
@@ -198,17 +201,10 @@ mod main_game {
 fn main() {
     #[cfg(not(target_arch = "wasm32"))]
     let mut standalone_mode = false;
-    let mut track_path = "racing/assets/track1.toml".to_string();
     for arg in std::env::args().skip(1) {
         #[cfg(not(target_arch = "wasm32"))]
         if arg == "--standalone" {
             standalone_mode = true;
-        } else {
-            track_path = arg;
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            track_path = arg;
         }
     }
 
@@ -261,7 +257,6 @@ fn main() {
         .insert_resource(Time::<Fixed>::from_duration(
             std::time::Duration::from_secs_f32(1.0 / 200.0),
         ))
-        .insert_resource(TrackPath(track_path))
         .insert_resource(create_artifact_fetch_pipeline())
         .insert_resource(web_state)
         .insert_resource(WebApiQueue::default())
@@ -350,9 +345,6 @@ fn prompt_cli_credentials() -> Result<Option<(String, String)>, String> {
 
     Ok(Some((username, password)))
 }
-
-#[derive(Resource)]
-struct TrackPath(String);
 
 const WHEEL_BASE: f32 = 1.18;
 const WHEEL_TRACK: f32 = 0.95;
@@ -543,6 +535,44 @@ fn web_upload_artifact(
     });
 }
 
+fn web_delete_artifact(
+    server_url: &str,
+    _token: Option<&str>,
+    artifact_id: i64,
+    queue: Arc<Mutex<Vec<WebApiEvent>>>,
+) {
+    let url = web_api_url(server_url, &format!("/api/v1/artifacts/{artifact_id}"));
+    let mut request = ehttp::Request::get(url);
+    request.method = "DELETE".to_string();
+    #[cfg(not(target_arch = "wasm32"))]
+    let token = _token;
+    #[cfg(target_arch = "wasm32")]
+    let token: Option<&str> = None;
+    if let Some(token) = token {
+        request
+            .headers
+            .insert("Authorization", format!("Bearer {token}"));
+    }
+
+    ehttp::fetch(request, move |result| {
+        let event = match result {
+            Ok(resp) if resp.ok => WebApiEvent::DeleteResult {
+                artifact_id,
+                result: Ok(()),
+            },
+            Ok(resp) => WebApiEvent::DeleteResult {
+                artifact_id,
+                result: Err(response_error(&resp)),
+            },
+            Err(err) => WebApiEvent::DeleteResult {
+                artifact_id,
+                result: Err(format!("network error: {err}")),
+            },
+        };
+        push_web_event(&queue, event);
+    });
+}
+
 fn web_fetch_artifact_elf(
     server_url: &str,
     token: Option<&str>,
@@ -589,11 +619,11 @@ fn maybe_auth_token(web_state: &WebPortalState) -> Result<Option<String>, String
                     .token
                     .clone()
                     .map(Some)
-                    .ok_or_else(|| "Login required".to_string())
+                    .ok_or_else(|| "[auth] Login required".to_string())
             }
         }
         Some(false) => Ok(None),
-        None => Err("Server capabilities not loaded yet".to_string()),
+        None => Err("[capabilities] Server capabilities not loaded yet".to_string()),
     }
 }
 
@@ -634,13 +664,13 @@ fn handle_web_api_commands(
     for command in commands.read() {
         match command {
             WebApiCommand::RefreshCapabilities => {
-                web_state.status_message = Some("Loading server capabilities...".to_string());
+                web_state.status_message = Some("[capabilities] Loading server capabilities...".to_string());
                 web_fetch_capabilities(&web_state.server_url, web_queue.events.clone());
             }
             WebApiCommand::LoadArtifacts => {
                 if web_state.auth_required.is_none() {
                     web_state.status_message =
-                        Some("Checking server capabilities first...".to_string());
+                        Some("[capabilities] Checking server capabilities first...".to_string());
                     web_fetch_capabilities(&web_state.server_url, web_queue.events.clone());
                     continue;
                 }
@@ -651,7 +681,7 @@ fn handle_web_api_commands(
                         continue;
                     }
                 };
-                web_state.status_message = Some("Loading artifacts...".to_string());
+                web_state.status_message = Some("[load] Loading artifacts...".to_string());
                 web_fetch_artifacts(
                     &web_state.server_url,
                     token.as_deref(),
@@ -661,7 +691,7 @@ fn handle_web_api_commands(
             WebApiCommand::UploadArtifact => {
                 if web_state.auth_required.is_none() {
                     web_state.status_message =
-                        Some("Checking server capabilities first...".to_string());
+                        Some("[capabilities] Checking server capabilities first...".to_string());
                     web_fetch_capabilities(&web_state.server_url, web_queue.events.clone());
                     continue;
                 }
@@ -675,7 +705,7 @@ fn handle_web_api_commands(
                 #[cfg(not(target_arch = "wasm32"))]
                 match pick_artifact_for_upload_native() {
                     Ok(Some((name, bytes))) => {
-                        web_state.status_message = Some(format!("Uploading '{name}'..."));
+                        web_state.status_message = Some(format!("[upload] Uploading '{name}'..."));
                         web_upload_artifact(
                             &web_state.server_url,
                             token.as_deref(),
@@ -692,13 +722,35 @@ fn handle_web_api_commands(
                 }
                 #[cfg(target_arch = "wasm32")]
                 {
-                    web_state.status_message = Some("Pick artifact to upload...".to_string());
+                    web_state.status_message = Some("[upload] Pick artifact to upload...".to_string());
                     pick_artifact_for_upload_web(
                         web_state.server_url.clone(),
                         token,
                         web_queue.events.clone(),
                     );
                 }
+            }
+            WebApiCommand::DeleteArtifact { id } => {
+                if web_state.auth_required.is_none() {
+                    web_state.status_message =
+                        Some("[capabilities] Checking server capabilities first...".to_string());
+                    web_fetch_capabilities(&web_state.server_url, web_queue.events.clone());
+                    continue;
+                }
+                let token = match maybe_auth_token(&web_state) {
+                    Ok(token) => token,
+                    Err(error) => {
+                        web_state.status_message = Some(error);
+                        continue;
+                    }
+                };
+                web_state.status_message = Some(format!("[delete] Deleting artifact #{id}..."));
+                web_delete_artifact(
+                    &web_state.server_url,
+                    token.as_deref(),
+                    *id,
+                    web_queue.events.clone(),
+                );
             }
         }
     }
@@ -716,14 +768,14 @@ fn process_web_api_events(mut web_state: ResMut<WebPortalState>, web_queue: Res<
                 Ok(caps) => {
                     web_state.auth_required = Some(caps.auth_required);
                     web_state.status_message = Some(format!(
-                        "Connected: mode={}, auth_required={}",
+                        "[capabilities] Connected: mode={}, auth_required={}",
                         caps.mode, caps.auth_required
                     ));
                     #[cfg(not(target_arch = "wasm32"))]
                     if caps.auth_required && web_state.token.is_none() {
                         if let Some((username, password)) = web_state.cli_credentials.clone() {
                             web_state.status_message =
-                                Some(format!("Logging in as '{username}'..."));
+                                Some(format!("[auth] Logging in as '{username}'..."));
                             web_fetch_login(
                                 &web_state.server_url,
                                 &username,
@@ -742,7 +794,8 @@ fn process_web_api_events(mut web_state: ResMut<WebPortalState>, web_queue: Res<
                     }
                 }
                 Err(error) => {
-                    web_state.status_message = Some(format!("Capability check failed: {error}"));
+                    web_state.status_message =
+                        Some(format!("[error][capabilities] Capability check failed: {error}"));
                 }
             },
             #[cfg(not(target_arch = "wasm32"))]
@@ -750,7 +803,7 @@ fn process_web_api_events(mut web_state: ResMut<WebPortalState>, web_queue: Res<
                 Ok(login) => {
                     web_state.token = Some(login.token);
                     web_state.status_message =
-                        Some(format!("Logged in as {}", login.user.username));
+                        Some(format!("[auth] Logged in as {}", login.user.username));
                     web_fetch_artifacts(
                         &web_state.server_url,
                         web_state.token.as_deref(),
@@ -758,23 +811,24 @@ fn process_web_api_events(mut web_state: ResMut<WebPortalState>, web_queue: Res<
                     );
                 }
                 Err(error) => {
-                    web_state.status_message = Some(format!("Login failed: {error}"));
+                    web_state.status_message = Some(format!("[error][auth] Login failed: {error}"));
                 }
             },
             WebApiEvent::Artifacts(result) => match result {
                 Ok(artifacts) => {
                     web_state.artifacts = artifacts;
                     web_state.status_message =
-                        Some(format!("Loaded {} artifacts", web_state.artifacts.len()));
+                        Some(format!("[load] Loaded {} artifacts", web_state.artifacts.len()));
                 }
                 Err(error) => {
-                    web_state.status_message = Some(format!("Loading artifacts failed: {error}"));
+                    web_state.status_message =
+                        Some(format!("[error][load] Loading artifacts failed: {error}"));
                 }
             },
             WebApiEvent::UploadResult(result) => match result {
                 Ok(upload) => {
                     web_state.status_message =
-                        Some(format!("Uploaded artifact #{}", upload.artifact_id));
+                        Some(format!("[upload] Uploaded artifact #{}", upload.artifact_id));
                     if let Ok(token) = maybe_auth_token(&web_state) {
                         web_fetch_artifacts(
                             &web_state.server_url,
@@ -784,7 +838,29 @@ fn process_web_api_events(mut web_state: ResMut<WebPortalState>, web_queue: Res<
                     }
                 }
                 Err(error) => {
-                    web_state.status_message = Some(format!("Upload failed: {error}"));
+                    web_state.status_message =
+                        Some(format!("[error][upload] Upload failed: {error}"));
+                }
+            },
+            WebApiEvent::DeleteResult {
+                artifact_id,
+                result,
+            } => match result {
+                Ok(()) => {
+                    web_state.status_message =
+                        Some(format!("[delete] Deleted artifact #{artifact_id}"));
+                    if let Ok(token) = maybe_auth_token(&web_state) {
+                        web_fetch_artifacts(
+                            &web_state.server_url,
+                            token.as_deref(),
+                            web_queue.events.clone(),
+                        );
+                    }
+                }
+                Err(error) => {
+                    web_state.status_message = Some(format!(
+                        "[error][delete] Failed to delete artifact #{artifact_id}: {error}"
+                    ));
                 }
             },
         }
@@ -795,10 +871,9 @@ fn setup_track(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
-    track_path: Res<TrackPath>,
 ) {
-    let track_file = TrackFile::load(std::path::Path::new(&track_path.0))
-        .unwrap_or_else(|_| panic!("Failed to load track file: {}", track_path.0));
+    let track_file = TrackFile::load_builtin()
+        .unwrap_or_else(|_| panic!("Failed to load track file"));
 
     let control_points = track_file.control_points_vec2();
     let track_width = track_file.metadata.track_width;
@@ -960,7 +1035,6 @@ fn handle_spawn_car_event(
 fn process_artifact_fetch_results(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    track_path: Res<TrackPath>,
     track_spline: Res<track::TrackSpline>,
     mut manager: ResMut<RaceManager>,
     mut compile_pipeline: ResMut<ArtifactFetchPipeline>,
@@ -988,7 +1062,6 @@ fn process_artifact_fetch_results(
                 spawn_car_entry(
                     &mut commands,
                     &asset_server,
-                    &track_path,
                     &track_spline,
                     &mut manager,
                     driver,
@@ -1010,7 +1083,6 @@ fn process_artifact_fetch_results(
 fn spawn_car_entry(
     commands: &mut Commands,
     asset_server: &AssetServer,
-    track_path: &TrackPath,
     track_spline: &track::TrackSpline,
     manager: &mut RaceManager,
     driver: DriverType,
@@ -1019,8 +1091,8 @@ fn spawn_car_entry(
     let car_index = manager.cars.len();
     let offset = grid_offset(car_index);
 
-    let track_file = TrackFile::load(std::path::Path::new(&track_path.0))
-        .unwrap_or_else(|_| panic!("Failed to load track file: {}", track_path.0));
+    let track_file = TrackFile::load_builtin()
+        .unwrap_or_else(|_| panic!("Failed to load track file"));
     let start_point = track::first_point_from_file(&track_file);
 
     let position = start_point + offset;

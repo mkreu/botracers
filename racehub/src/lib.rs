@@ -159,7 +159,10 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
             "/api/v1/artifacts",
             get(list_artifacts).post(upload_artifact),
         )
-        .route("/api/v1/artifacts/{id}", get(download_artifact))
+        .route(
+            "/api/v1/artifacts/{id}",
+            get(download_artifact).delete(delete_artifact),
+        )
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())
         .with_state(state);
@@ -438,6 +441,59 @@ async fn download_artifact(
         bytes,
     )
         .into_response())
+}
+
+async fn delete_artifact(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    AxumPath(artifact_id): AxumPath<i64>,
+) -> Result<Response, ApiError> {
+    let user = authenticate(&state, &headers).await?;
+    let db = state.db.lock().await;
+
+    let row: Option<(i64, String)> = db
+        .query_row(
+            "SELECT owner_user_id, elf_path FROM artifacts WHERE id = ?1",
+            params![artifact_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()
+        .map_err(|e| ApiError::internal(format!("failed to query artifact: {e}")))?;
+
+    let Some((owner_user_id, rel_path)) = row else {
+        return Err(ApiError::not_found("artifact not found"));
+    };
+
+    if state.auth_mode == AuthMode::Required && owner_user_id != user.id {
+        return Err(ApiError::unauthorized(
+            "artifact is not owned by current user",
+        ));
+    }
+
+    let relative = Path::new(&rel_path);
+    if relative.is_absolute() || relative.components().count() != 1 {
+        return Err(ApiError::internal("invalid artifact file path"));
+    }
+
+    let full_path = state.artifacts_dir.join(relative);
+    if !full_path.starts_with(&state.artifacts_dir) {
+        return Err(ApiError::internal("artifact path escaped storage root"));
+    }
+
+    match std::fs::remove_file(&full_path) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => {
+            return Err(ApiError::internal(format!(
+                "failed to delete artifact file: {error}"
+            )));
+        }
+    }
+
+    db.execute("DELETE FROM artifacts WHERE id = ?1", params![artifact_id])
+        .map_err(|e| ApiError::internal(format!("failed to delete artifact row: {e}")))?;
+
+    Ok(StatusCode::NO_CONTENT.into_response())
 }
 
 async fn authenticate(state: &AppState, headers: &HeaderMap) -> Result<UserInfo, ApiError> {

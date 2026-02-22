@@ -14,7 +14,7 @@ cargo run --bin racing -- --standalone
 Behavior:
 - Game starts embedded RaceHub on `http://127.0.0.1:8787` (override with `RACEHUB_STANDALONE_BIND`).
 - Auth is disabled.
-- Game and VSCode extension can upload/list/download artifacts without login.
+- Game and VSCode extension can upload/list/download/delete artifacts without login.
 
 ### 2) Server mode (separate backend, auth enabled)
 Start backend:
@@ -77,16 +77,11 @@ What this produces:
 - `web-dist/racing.js` + `web-dist/racing_bg.wasm`
 - `web-dist/assets/` copied from `racing/assets/`
 
-Serve web app (same origin as API, so cookie auth works):
+Serve web app (same origin as API, so cookie auth works, or optionally with `RACEHUB_AUTH_MODE=disabled`):
 
 ```bash
-./scripts/serve_web.sh
+cargo run -p racehup
 ```
-
-Useful options:
-- `./scripts/serve_web.sh --release` builds release wasm before serving.
-- `NO_BUILD=1 ./scripts/serve_web.sh` serves existing `web-dist/` without rebuilding.
-- `RACEHUB_AUTH_MODE=disabled ./scripts/serve_web.sh` serves in standalone/no-auth backend mode.
 
 ## VSCode Extension (`vscode-extension/`)
 
