@@ -76,6 +76,11 @@ Container defaults:
 - `RACEHUB_ARTIFACTS_DIR=/data/racehub_artifacts`
 - `RACEHUB_STATIC_DIR=/opt/racehub/web-dist`
 
+Container image notes:
+- OCI-first image: Dockerfile intentionally omits Docker `HEALTHCHECK` metadata to avoid Podman OCI warnings.
+- Probe liveness/readiness via `GET /healthz`.
+- Container build uses `./scripts/build_web.sh --release` directly and does not run `wasm-opt`.
+
 Quick checks:
 - `GET /healthz` returns `ok`
 - `GET /index.html` serves the wasm game

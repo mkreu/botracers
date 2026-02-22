@@ -188,6 +188,8 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
 - Production container image is built by the root `Dockerfile` and includes:
   - release `racehub` binary
   - release wasm game bundle in `/opt/racehub/web-dist`
+  - OCI-first metadata: no Dockerfile `HEALTHCHECK` directive (use `/healthz` endpoint for probes)
+  - no `wasm-opt` step in container builds; web artifacts are produced by `./scripts/build_web.sh --release`
   - defaults: `RACEHUB_BIND=0.0.0.0:8787`, `RACEHUB_DB_PATH=/data/racehub.db`, `RACEHUB_ARTIFACTS_DIR=/data/racehub_artifacts`, `RACEHUB_STATIC_DIR=/opt/racehub/web-dist`
 - GHCR publish workflow: `.github/workflows/publish-racehub-image.yml`
   - triggers on pushes to `main` and tags `v*`
