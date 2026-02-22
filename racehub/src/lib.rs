@@ -26,6 +26,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde::Deserialize;
 use tokio::sync::Mutex;
 use tower_http::{cors::CorsLayer, services::ServeDir, trace::TraceLayer};
+use tracing::{debug, info, warn};
 
 const LOCAL_USER_ID: i64 = 1;
 const LOCAL_USERNAME: &str = "local";
@@ -173,6 +174,16 @@ impl IntoResponse for ApiError {
 }
 
 pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::Error>> {
+    info!(
+        bind = %config.bind,
+        auth_mode = %config.auth_mode.as_str(),
+        db_path = %config.db_path.display(),
+        artifacts_dir = %config.artifacts_dir.display(),
+        static_dir = ?config.static_dir.as_ref().map(|p| p.display().to_string()),
+        registration_enabled = config.registration_enabled,
+        "starting racehub server"
+    );
+
     std::fs::create_dir_all(&config.artifacts_dir)?;
     let conn = Connection::open(&config.db_path)?;
     run_migrations(&conn)?;
@@ -191,8 +202,34 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
 
     let addr: SocketAddr = config.bind.parse()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app).await?;
+    info!(%addr, "racehub listening");
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
+    info!("racehub server shutdown complete");
     Ok(())
+}
+
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+
+        let mut sigint = signal(SignalKind::interrupt()).expect("register SIGINT handler");
+        let mut sigterm = signal(SignalKind::terminate()).expect("register SIGTERM handler");
+
+        tokio::select! {
+            _ = tokio::signal::ctrl_c() => info!("shutdown signal received (ctrl_c)"),
+            _ = sigint.recv() => info!("shutdown signal received (SIGINT)"),
+            _ = sigterm.recv() => info!("shutdown signal received (SIGTERM)"),
+        }
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+        info!("shutdown signal received (ctrl_c)");
+    }
 }
 
 fn build_app(state: AppState, static_dir: Option<PathBuf>) -> Router {
@@ -220,7 +257,10 @@ fn build_app(state: AppState, static_dir: Option<PathBuf>) -> Router {
         .with_state(state);
 
     if let Some(dir) = static_dir {
+        info!(static_dir = %dir.display(), "serving static files");
         app = app.fallback_service(ServeDir::new(dir));
+    } else {
+        warn!("static file serving disabled (RACEHUB_STATIC_DIR empty)");
     }
 
     app
@@ -297,16 +337,19 @@ async fn web_login_post(
             )
                 .into_response()
         }
-        Err(_) => (
-            StatusCode::UNAUTHORIZED,
-            render_login_page(
-                next,
-                Some(username),
-                Some("Invalid username or password"),
-                state.registration_enabled,
-            ),
-        )
-            .into_response(),
+        Err(_) => {
+            warn!(username, "web login failed");
+            (
+                StatusCode::UNAUTHORIZED,
+                render_login_page(
+                    next,
+                    Some(username),
+                    Some("Invalid username or password"),
+                    state.registration_enabled,
+                ),
+            )
+                .into_response()
+        }
     }
 }
 
@@ -527,6 +570,13 @@ async fn upload_artifact(
     )
     .map_err(|e| ApiError::internal(format!("failed to update artifact path: {e}")))?;
 
+    info!(
+        artifact_id,
+        owner_user_id = user.id,
+        artifact_name = payload.name.trim(),
+        target = payload.target.trim(),
+        "artifact uploaded"
+    );
     Ok(Json(UploadArtifactResponse { artifact_id }))
 }
 
@@ -622,6 +672,7 @@ async fn delete_artifact(
     db.execute("DELETE FROM artifacts WHERE id = ?1", params![artifact_id])
         .map_err(|e| ApiError::internal(format!("failed to delete artifact row: {e}")))?;
 
+    info!(artifact_id, owner_user_id = user.id, "artifact deleted");
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -638,6 +689,7 @@ async fn authenticate(state: &AppState, headers: &HeaderMap) -> Result<UserInfo,
     } else if let Some(token) = session_cookie_token(headers) {
         token
     } else {
+        debug!("authentication failed: no bearer token or session cookie");
         return Err(ApiError::unauthorized(
             "missing Authorization bearer token or session cookie",
         ));
@@ -658,6 +710,9 @@ async fn authenticate(state: &AppState, headers: &HeaderMap) -> Result<UserInfo,
         .optional()
         .map_err(|e| ApiError::internal(format!("failed to lookup session: {e}")))?;
 
+    if user.is_none() {
+        debug!("authentication failed: invalid or expired session");
+    }
     user.ok_or_else(|| ApiError::unauthorized("invalid or expired session"))
 }
 

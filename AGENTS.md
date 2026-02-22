@@ -184,6 +184,8 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
 - `RACEHUB_COOKIE_SECURE` controls whether the session cookie is marked `Secure`.
 - `RACEHUB_REGISTRATION_ENABLED` controls whether account registration endpoints/UI are enabled (default `true`).
 - `RACEHUB_STATIC_DIR` controls which static directory is served (default `web-dist`; empty disables static serving).
+- Server uses graceful shutdown on process signals (`SIGINT`/`SIGTERM` on Unix, `Ctrl-C` elsewhere).
+- `racehub` emits concise tracing logs for startup/shutdown, static serving mode, login failures, and artifact upload/delete actions.
 - Backend scope is intentionally minimal: auth + artifact storage/list/download/delete.
 - Production container image is built by the root `Dockerfile` and includes:
   - release `racehub` binary
