@@ -1,26 +1,20 @@
 #![no_std]
 #![no_main]
 
-use core::{f32::consts::PI, fmt::Write, panic::PanicInfo};
+use core::{f32::consts::PI, fmt::Write};
 
-use bot::{
+use racehub_bot_sdk::{
     driving::{CarControls, CarState, TrackRadar},
-    log,
+    log, SLOT2, SLOT3, SLOT5,
 };
-
-#[panic_handler]
-fn panic(_panic: &PanicInfo<'_>) -> ! {
-    writeln!(log(), "{}", _panic).ok(); // Do not panic in panic
-    loop {}
-}
 
 #[unsafe(export_name = "main")]
 fn main() -> ! {
     writeln!(log(), "Car Radar OS starting up...").ok();
 
-    let car_state = CarState::bind(bot::SLOT2);
-    let mut car_controls = CarControls::bind(bot::SLOT3);
-    let radar = TrackRadar::bind(bot::SLOT5);
+    let car_state = CarState::bind(SLOT2);
+    let mut car_controls = CarControls::bind(SLOT3);
+    let radar = TrackRadar::bind(SLOT5);
 
     let max_steer = PI / 6.0;
     let mut fallback_turn_dir = 1.0f32;
@@ -64,7 +58,7 @@ fn main() -> ! {
             .set_steering(current_steer * (1.0 - steer_blend) + desired_steer * steer_blend);
 
         // Speed policy from front clearance and current speed.
-        let mut accel: f32 = 0.3;
+        let accel: f32 = 0.3;
         let mut brake: f32 = 0.0;
         
         if c < 30.0 {

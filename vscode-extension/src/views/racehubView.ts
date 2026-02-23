@@ -22,6 +22,7 @@ import {
 } from '../workspace';
 
 type ViewState = 'loggedOut' | 'needsWorkspace' | 'ready';
+type ViewStateDetail = 'none' | 'notLoggedIn' | 'sessionExpired' | 'workspaceMissing' | 'noBinaries' | 'requestError';
 
 type RootNodeKind = 'localRoot' | 'remoteRoot';
 
@@ -29,8 +30,7 @@ type Node =
   | { kind: RootNodeKind }
   | { kind: 'localBin'; bin: LocalBinary }
   | { kind: 'remoteArtifact'; artifact: ArtifactSummary }
-  | { kind: 'message'; message: string }
-  | { kind: 'action'; label: string; description?: string; command: string; arguments?: unknown[] };
+  | { kind: 'message'; message: string };
 
 export class RaceHubItem extends vscode.TreeItem {
   constructor(public readonly node: Node) {
@@ -55,16 +55,6 @@ export class RaceHubItem extends vscode.TreeItem {
       this.tooltip = node.message;
     }
 
-    if (node.kind === 'action') {
-      this.description = node.description;
-      this.iconPath = new vscode.ThemeIcon('play-circle');
-      this.command = {
-        command: node.command,
-        title: node.label,
-        arguments: node.arguments
-      };
-    }
-
     if (node.kind === 'localRoot' || node.kind === 'remoteRoot') {
       this.iconPath = new vscode.ThemeIcon('list-tree');
     }
@@ -83,8 +73,6 @@ function itemLabel(node: Node): string {
       return node.artifact.name;
     case 'message':
       return node.message;
-    case 'action':
-      return node.label;
   }
 }
 
@@ -107,8 +95,6 @@ function contextValue(node: Node): string | undefined {
       return node.artifact.owned_by_me ? 'remoteArtifactOwned' : 'remoteArtifact';
     case 'message':
       return 'message';
-    case 'action':
-      return 'actionItem';
   }
 }
 
@@ -117,17 +103,17 @@ export class RaceHubViewProvider implements vscode.TreeDataProvider<RaceHubItem>
   readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
 
   private state: ViewState = 'loggedOut';
+  private stateDetail: ViewStateDetail = 'notLoggedIn';
   private token: string | undefined;
   private workspaceRoot: string | undefined;
   private localBinaries: LocalBinary[] = [];
   private artifacts: ArtifactSummary[] = [];
-  private stateMessage: string | undefined;
 
   constructor(private readonly context: vscode.ExtensionContext) {}
 
   async refreshArtifacts(): Promise<void> {
     this.artifacts = [];
-    this.stateMessage = undefined;
+    this.stateDetail = 'none';
     this.localBinaries = [];
     this.workspaceRoot = getWorkspaceRoot();
 
@@ -137,7 +123,7 @@ export class RaceHubViewProvider implements vscode.TreeDataProvider<RaceHubItem>
         this.token = await readToken(this.context);
         if (!this.token) {
           this.state = 'loggedOut';
-          this.stateMessage = 'Not logged in to RaceHub.';
+          this.stateDetail = 'notLoggedIn';
           await this.pushContext();
           this.onDidChangeTreeDataEmitter.fire(undefined);
           return;
@@ -148,7 +134,7 @@ export class RaceHubViewProvider implements vscode.TreeDataProvider<RaceHubItem>
 
       if (!this.workspaceRoot || !hasCargoToml(this.workspaceRoot)) {
         this.state = 'needsWorkspace';
-        this.stateMessage = 'Open or initialize a bot workspace to continue.';
+        this.stateDetail = 'workspaceMissing';
         await this.pushContext();
         this.onDidChangeTreeDataEmitter.fire(undefined);
         return;
@@ -157,13 +143,14 @@ export class RaceHubViewProvider implements vscode.TreeDataProvider<RaceHubItem>
       this.localBinaries = listLocalBinaries(this.workspaceRoot);
       if (this.localBinaries.length === 0) {
         this.state = 'needsWorkspace';
-        this.stateMessage = `No binaries found in ${this.workspaceRoot}`;
+        this.stateDetail = 'noBinaries';
         await this.pushContext();
         this.onDidChangeTreeDataEmitter.fire(undefined);
         return;
       }
 
       this.state = 'ready';
+      this.stateDetail = 'none';
       this.artifacts = await listArtifacts(this.token);
       await this.pushContext();
       this.onDidChangeTreeDataEmitter.fire(undefined);
@@ -172,10 +159,10 @@ export class RaceHubViewProvider implements vscode.TreeDataProvider<RaceHubItem>
       if (message.includes('401')) {
         await clearToken(this.context);
         this.state = 'loggedOut';
-        this.stateMessage = 'Session expired. Please log in again.';
+        this.stateDetail = 'sessionExpired';
       } else {
         this.state = 'loggedOut';
-        this.stateMessage = message;
+        this.stateDetail = 'requestError';
       }
       await this.pushContext();
       this.onDidChangeTreeDataEmitter.fire(undefined);
@@ -184,6 +171,7 @@ export class RaceHubViewProvider implements vscode.TreeDataProvider<RaceHubItem>
 
   private async pushContext(): Promise<void> {
     await vscode.commands.executeCommand('setContext', 'racehub.state', this.state);
+    await vscode.commands.executeCommand('setContext', 'racehub.stateDetail', this.stateDetail);
     await this.pushBinSourcePathsContext();
   }
 
@@ -208,20 +196,8 @@ export class RaceHubViewProvider implements vscode.TreeDataProvider<RaceHubItem>
 
   getChildren(element?: RaceHubItem): vscode.ProviderResult<RaceHubItem[]> {
     if (!element) {
-      if (this.state === 'loggedOut') {
-        return [
-          new RaceHubItem({ kind: 'message', message: this.stateMessage ?? 'Not logged in.' }),
-          new RaceHubItem({ kind: 'action', label: 'Log In', command: 'racehub.login' }),
-          new RaceHubItem({ kind: 'action', label: 'Configure Server URL', command: 'racehub.configureServer' })
-        ];
-      }
-
-      if (this.state === 'needsWorkspace') {
-        return [
-          new RaceHubItem({ kind: 'message', message: this.stateMessage ?? 'Bot workspace needed.' }),
-          new RaceHubItem({ kind: 'action', label: 'Initialize Bot Project', command: 'racehub.initializeBotProject' }),
-          new RaceHubItem({ kind: 'action', label: 'Open Bot Project', command: 'racehub.openBotProject' })
-        ];
+      if (this.state === 'loggedOut' || this.state === 'needsWorkspace') {
+        return [];
       }
 
       return [new RaceHubItem({ kind: 'localRoot' }), new RaceHubItem({ kind: 'remoteRoot' })];

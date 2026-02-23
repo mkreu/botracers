@@ -15,7 +15,8 @@
       {
         "command": "racehub.configureServer",
         "title": "Configure Server URL",
-        "category": "RaceHub"
+        "category": "RaceHub",
+        "icon": "$(gear)"
       },
       {
         "command": "racehub.login",
@@ -35,7 +36,8 @@
       {
         "command": "racehub.view.refresh",
         "title": "Refresh",
-        "category": "RaceHub"
+        "category": "RaceHub",
+        "icon": "$(refresh)"
       },
       {
         "command": "racehub.view.buildAndUpload",
@@ -47,7 +49,7 @@
         "command": "racehub.view.buildBinary",
         "title": "Build Binary",
         "category": "RaceHub",
-        "icon": "$(gear)"
+        "icon": "$(chip)"
       },
       {
         "command": "racehub.view.revealElfPath",
@@ -59,7 +61,7 @@
         "command": "racehub.view.replaceArtifact",
         "title": "Replace Artifact",
         "category": "RaceHub",
-        "icon": "$(replace-all)"
+        "icon": "$(replace)"
       },
       {
         "command": "racehub.view.deleteArtifact",
@@ -83,6 +85,33 @@
         }
       ]
     },
+    "viewsWelcome": [
+      {
+        "view": "racehub.explorer",
+        "contents": "Sign in to RaceHub to manage artifacts.\n[Login](command:racehub.login)\n[Configure Server URL](command:racehub.configureServer)",
+        "when": "racehub.state == loggedOut && racehub.stateDetail == notLoggedIn"
+      },
+      {
+        "view": "racehub.explorer",
+        "contents": "Session expired. Sign in again.\n[Login](command:racehub.login)\n[Configure Server URL](command:racehub.configureServer)",
+        "when": "racehub.state == loggedOut && racehub.stateDetail == sessionExpired"
+      },
+      {
+        "view": "racehub.explorer",
+        "contents": "Could not reach RaceHub. Check server profile and retry.\n[Configure Server URL](command:racehub.configureServer)\n[Refresh](command:racehub.view.refresh)",
+        "when": "racehub.state == loggedOut && racehub.stateDetail == requestError"
+      },
+      {
+        "view": "racehub.explorer",
+        "contents": "Open or initialize a bot workspace to continue.\n[Initialize Bot Project](command:racehub.initializeBotProject)\n[Open Bot Project](command:racehub.openBotProject)",
+        "when": "racehub.state == needsWorkspace && racehub.stateDetail == workspaceMissing"
+      },
+      {
+        "view": "racehub.explorer",
+        "contents": "Workspace found, but no Rust binaries were discovered.\n[Initialize Bot Project](command:racehub.initializeBotProject)\n[Open Bot Project](command:racehub.openBotProject)\n[Refresh](command:racehub.view.refresh)",
+        "when": "racehub.state == needsWorkspace && racehub.stateDetail == noBinaries"
+      }
+    ],
     "menus": {
       "view/title": [
         {

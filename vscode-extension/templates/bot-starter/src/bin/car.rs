@@ -1,25 +1,19 @@
 #![no_std]
 #![no_main]
 
-use core::{fmt::Write, panic::PanicInfo};
+use core::fmt::Write;
 
-use bot::{
+use racehub_bot_sdk::{
     driving::{CarControls, CarState},
-    log,
+    log, SLOT2, SLOT3,
 };
-
-#[panic_handler]
-fn panic(_panic: &PanicInfo<'_>) -> ! {
-    writeln!(log(), "{}", _panic).ok();
-    loop {}
-}
 
 #[unsafe(export_name = "main")]
 fn main() -> ! {
     writeln!(log(), "Starter car bot running...").ok();
 
-    let car_state = CarState::bind(bot::SLOT2);
-    let mut car_controls = CarControls::bind(bot::SLOT3);
+    let car_state = CarState::bind(SLOT2);
+    let mut car_controls = CarControls::bind(SLOT3);
 
     loop {
         let speed = car_state.speed();

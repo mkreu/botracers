@@ -1,15 +1,9 @@
 #![no_std]
 #![no_main]
 
-use core::{fmt::Write, panic::PanicInfo};
+use core::fmt::Write;
 
-use bot::log;
-
-#[panic_handler]
-fn panic(_panic: &PanicInfo<'_>) -> ! {
-    writeln!(log(), "{}", _panic).ok(); // Do not panic in panic
-    loop {}
-}
+use racehub_bot_sdk::log;
 
 #[unsafe(export_name = "main")]
 fn main() -> ! {

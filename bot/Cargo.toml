@@ -9,11 +9,6 @@ panic = "abort"
 [profile.release]
 panic = "abort"
 
-[lib]
-test = false
-doctest = false
-bench = false
-
 [[bin]]
 name = "bottles"
 path = "src/bin/bottles.rs"
@@ -36,5 +31,4 @@ doctest = false
 bench = false
 
 [dependencies]
-bevy_math = { version = "0.18", default-features = false, features = ["libm"] }
-
+racehub-bot-sdk = { path = "../racehub-bot-sdk" }

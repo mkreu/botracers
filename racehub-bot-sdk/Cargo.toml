@@ -1,0 +1,17 @@
+[package]
+name = "racehub-bot-sdk"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+test = false
+doctest = false
+bench = false
+
+[features]
+default = ["panic-handler", "global-allocator"]
+panic-handler = []
+global-allocator = []
+
+[dependencies]
+bevy_math = { version = "0.18", default-features = false, features = ["libm"] }

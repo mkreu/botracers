@@ -23,6 +23,8 @@ function registerCommand(
 
 export function activate(context: vscode.ExtensionContext): void {
   const provider = new RaceHubViewProvider(context);
+  void vscode.commands.executeCommand('setContext', 'racehub.state', 'loggedOut');
+  void vscode.commands.executeCommand('setContext', 'racehub.stateDetail', 'notLoggedIn');
 
   const view = vscode.window.createTreeView('racehub.explorer', {
     treeDataProvider: provider,

@@ -4816,6 +4816,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "racehub-bot-sdk"
+version = "0.1.0"
+dependencies = [
+ "bevy_math",
+]
+
+[[package]]
 name = "racing"
 version = "0.1.0"
 dependencies = [

@@ -9,11 +9,6 @@ panic = "abort"
 [profile.release]
 panic = "abort"
 
-[lib]
-test = false
-doctest = false
-bench = false
-
 [[bin]]
 name = "car"
 path = "src/bin/car.rs"
@@ -22,4 +17,4 @@ doctest = false
 bench = false
 
 [dependencies]
-bevy_math = { version = "0.18", default-features = false, features = ["libm"] }
+racehub-bot-sdk = { git = "https://github.com/mkreu/programming-game.git", branch = "main" }

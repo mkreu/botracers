@@ -7,13 +7,14 @@ A racing game prototype where cars can be driven by AI implemented as **RISC-V p
 ## Workspace Structure
 
 ```
-Cargo.toml            # Workspace root — members: racing, emulator, race-protocol, racehub. Excludes bot.
+Cargo.toml            # Workspace root — members: racing, emulator, race-protocol, racehub, racehub-bot-sdk. Excludes bot.
 Dockerfile            # Multi-stage production image build (racehub binary + web-dist wasm build)
 /.github/workflows/   # CI workflows, including GHCR container publish and VSCode .vsix artifact build
 ├── racing/           # Bevy game — physics, rendering, car spawning, AI systems
 ├── emulator/         # Use-case-agnostic RISC-V emulator (RV32IMAFC + RV32C/Zcf) with Bevy integration
 ├── race-protocol/    # Shared API DTOs used by backend/client/game/extension
 ├── racehub/          # Minimal backend (auth + artifact storage/list/download/delete)
+├── racehub-bot-sdk/  # Shared no_std bot SDK (MMIO bindings, log device, optional panic+allocator runtime)
 ├── vscode-extension/ # VSCode extension for bot bootstrap + build/upload + artifact management (not a Cargo crate)
 └── bot/              # no_std RISC-V programs compiled to bare-metal ELF (separate target)
 ```
@@ -90,12 +91,21 @@ Devices receive **offset-relative addresses** (i.e., `addr & 0xFF`), not absolut
 
 - Target: `riscv32imafc-unknown-none-elf` (configured in `bot/.cargo/config.toml`)
 - Linker script `link.x` places `.text` at `0x1000` (start of DRAM)
-- `lib.rs` defines slot constants (`SLOT1`=0x100, `SLOT2`=0x200, `SLOT3`=0x300, `SLOT4`=0x400, `SLOT5`=0x500, `SLOT6`=0x600) and a bump allocator (`#[global_allocator]`)
-- `driving.rs` — `CarState` (reads from SLOT2), `CarControls` (writes to SLOT3), `SplineQuery` (queries SLOT4), `TrackRadar` (reads SLOT5), and `CarRadar` (reads SLOT6) via volatile pointer access
+- Depends on `racehub-bot-sdk` for slot constants, MMIO bindings (`CarState`, `CarControls`, `SplineQuery`, `TrackRadar`, `CarRadar`), log writer, and default runtime (`panic-handler` + `global-allocator` features)
+- `.cargo/config.toml` and local `link.x` stay in each bot repo; target/linker wiring is crate-local on stable Rust
 - `bin/car.rs` — The car AI: infinite loop reading state, querying spline, computing steering/braking, writing controls
 - `bin/car_radar.rs` — Radar-only car AI using `TrackRadar` (no spline-following dependency)
 - `bin/bottles.rs` — Test program (99 bottles of beer via log device)
-- Uses `bevy_math` with `default-features = false, features = ["libm"]`
+
+### `racehub-bot-sdk/` — Shared Bot Runtime + MMIO API
+
+- `no_std` crate used by local `bot/` and VSCode-initialized bot repos
+- Exposes `pub mod driving`, `pub mod log`, slot constants (`SLOT1..SLOT6`), and `log()`
+- Feature flags:
+  - `panic-handler` — provides a default panic handler that logs panic text to slot `0x100`
+  - `global-allocator` — installs bump allocator as `#[global_allocator]`
+  - `allocator-4k` — heap size profile for `global-allocator` (default 4 KiB)
+- Consumers can disable runtime features to provide custom panic/allocator implementations
 
 **CarState layout** (SLOT2, 0x200, read by bot):
 | Offset | Field       | Type |
@@ -220,16 +230,17 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
   - `localhost` -> `http://127.0.0.1:8787`
   - `custom` -> `racehub.customServerUrl`
 - `RaceHub` tree view is contributed directly to the built-in Explorer sidebar with explicit states:
-  - `loggedOut`: login + server config actions
-  - `needsWorkspace`: initialize/open bot project actions
+  - `loggedOut`: rendered through VS Code Welcome View content (login/server actions with context-specific variants like session expiry or request errors)
+  - `needsWorkspace`: rendered through VS Code Welcome View content (initialize/open actions with context-specific variants like missing workspace or no binaries)
   - `ready`: local binaries + remote artifacts
 - Action density policy:
   - RaceHub tree inline icon actions for local binaries: `Build & Upload`, `Build`, `Reveal ELF Path`
   - RaceHub tree inline icon actions on owned artifacts: `Replace`, `Toggle Visibility`, `Delete`
   - the same owned-artifact actions are also available in the context menu
 - Local bin discovery uses `Cargo.toml` (`[[bin]]` including optional `path`) and `src/bin/*.rs`.
-- Bootstrap template assets: `vscode-extension/templates/bot-starter/` (`Cargo.toml`, `.cargo/config.toml`, `link.x`, `src/lib.rs`, `src/log.rs`, `src/driving.rs`, `src/bin/car.rs`)
-- Template parity rule: `templates/bot-starter/src/lib.rs`, `src/log.rs`, and `src/driving.rs` must remain exact copies of `bot/src/lib.rs`, `bot/src/log.rs`, and `bot/src/driving.rs`.
+- Bootstrap template assets: `vscode-extension/templates/bot-starter/` (`Cargo.toml`, `.cargo/config.toml`, `link.x`, `src/bin/car.rs`)
+- Starter template imports `racehub-bot-sdk` from git (`branch = "main"`) and relies on SDK defaults for panic handler + allocator.
+- Template rule: keep local linker/target files minimal (`.cargo/config.toml`, `link.x`) and treat `racehub-bot-sdk` as the source of truth for bot MMIO/log/runtime helpers.
 - Replacement semantics are best-effort cleanup: upload new artifact first, then delete selected old artifact if owned.
 - Detects server capabilities and skips auth flow automatically when `auth_required=false`.
 
@@ -316,5 +327,5 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
 - **Device index vs slot address** — Device index 0 = address 0x100, index 1 = 0x200, etc. Off-by-one errors here will silently read zeros or fail.
 - **Mmu passes offsets, not absolute addresses** — If you implement a new device, your `load`/`store` will receive `addr & 0xFF`, not the full address.
 - **`instructions_per_update` tuning** — Too low and the bot can't complete a loop iteration per tick. Too high and it burns CPU time.
-- **Bump allocator in bot** — The bot has a 4 KiB heap that never frees. Allocating in a loop will eventually OOM. Current bot code doesn't allocate in its hot loop, but be careful adding features that do.
+- **Bump allocator in SDK defaults** — `racehub-bot-sdk` default features provide a 4 KiB bump allocator that never frees. Allocating in a loop will eventually OOM. Current bot code doesn't allocate in its hot loop, but be careful adding features that do.
 - **Compressed immediates are easy to misdecode** — For `C.ADDI/C.LI/C.LUI/C.ANDI`, immediate sign comes from `inst[12]` mapped to imm bit 5. Missing that sign bit causes silent control-flow/data corruption.

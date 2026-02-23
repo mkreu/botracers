@@ -24,9 +24,11 @@ Use `RaceHub: Configure Server URL` to switch profiles.
 The `RaceHub` tree appears inside the built-in Explorer sidebar and has three explicit states:
 
 - `loggedOut`
-  - Shows login and server configuration actions.
+  - Renders a VS Code Welcome View with state-specific guidance and actions.
+  - Variants: base login prompt, session-expired prompt, generic request-error prompt.
 - `needsWorkspace`
-  - Shows initialize/open bot project actions.
+  - Renders a VS Code Welcome View with workspace-specific guidance and actions.
+  - Variants: missing workspace/Cargo.toml, no discovered binaries.
 - `ready`
   - Shows `Local Binaries` and `Remote Artifacts`.
 
@@ -45,22 +47,22 @@ Replace semantics:
 - Delete old artifact after upload (best effort).
 - If delete fails, new artifact is kept.
 
-## Bootstrap Template Parity
-
-The starter template intentionally mirrors bot MMIO interfaces exactly:
-
-- `src/lib.rs` == `bot/src/lib.rs`
-- `src/log.rs` == `bot/src/log.rs`
-- `src/driving.rs` == `bot/src/driving.rs`
+## Bootstrap Template
 
 Template files include:
 - `Cargo.toml`
 - `.cargo/config.toml`
 - `link.x`
-- `src/lib.rs`
-- `src/log.rs`
-- `src/driving.rs`
 - `src/bin/car.rs`
+
+Template behavior:
+- Pulls `racehub-bot-sdk` from git (`branch = "main"`).
+- Uses SDK defaults for panic handler and global allocator.
+- Keeps target/linker wiring local and explicit via `.cargo/config.toml` and `link.x`.
+
+Override points:
+- Provide your own panic handler by disabling sdk feature `panic-handler`.
+- Provide your own allocator by disabling sdk features `global-allocator` and `allocator-4k`.
 
 ## Auth Behavior
 

@@ -10,6 +10,7 @@ Rust/Bevy racing prototype where cars run RISC-V ELF artifacts fetched from Race
 Recommended workflow after onboarding:
 - Run `RaceHub: Initialize Bot Project` once to scaffold a starter `bot` project.
 - Use the RaceHub sidebar to build/upload local binaries and manage uploaded artifacts.
+- Starter projects keep only minimal local toolchain files (`.cargo/config.toml`, `link.x`, `src/bin/car.rs`) and import bot MMIO/runtime helpers from `racehub-bot-sdk`.
 
 ## Run Modes
 

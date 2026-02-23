@@ -64,10 +64,20 @@ impl CarState {
         unsafe { ptr::read_volatile(self.speed) }
     }
     pub fn position(&self) -> Vec2 {
-        unsafe { Vec2::new(ptr::read_volatile(self.position_x), ptr::read_volatile(self.position_y)) }
+        unsafe {
+            Vec2::new(
+                ptr::read_volatile(self.position_x),
+                ptr::read_volatile(self.position_y),
+            )
+        }
     }
     pub fn forward(&self) -> Vec2 {
-        unsafe { Vec2::new(ptr::read_volatile(self.forward_x), ptr::read_volatile(self.forward_y)) }
+        unsafe {
+            Vec2::new(
+                ptr::read_volatile(self.forward_x),
+                ptr::read_volatile(self.forward_y),
+            )
+        }
     }
 }
 
@@ -88,7 +98,6 @@ impl SplineQuery {
         }
     }
 
-    /// Query the spline at position t and return the resulting coordinates.
     pub fn query(&mut self, t: f32) -> Vec2 {
         unsafe {
             ptr::write_volatile(self.t, t);
@@ -96,11 +105,8 @@ impl SplineQuery {
         }
     }
 
-    /// Read the maximum t value (spline domain end).
     pub fn t_max(&self) -> f32 {
-        unsafe {
-            ptr::read_volatile(self.t_max)
-        }
+        unsafe { ptr::read_volatile(self.t_max) }
     }
 }
 
@@ -169,8 +175,6 @@ impl CarRadar {
         }
     }
 
-    /// Returns up to 4 absolute car positions, nearest-first.
-    /// Empty slots are reported as None (NaN encoded in MMIO).
     pub fn positions(&self) -> [Option<Vec2>; 4] {
         unsafe {
             let x0 = ptr::read_volatile(self.car_x[0]);

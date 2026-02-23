@@ -1,26 +1,20 @@
 #![no_std]
 #![no_main]
 
-use core::{f32::consts::PI, fmt::Write, panic::PanicInfo};
+use core::{f32::consts::PI, fmt::Write};
 
-use bot::{
+use racehub_bot_sdk::{
     driving::{CarControls, CarState, SplineQuery},
-    log,
+    log, SLOT2, SLOT3, SLOT4,
 };
-
-#[panic_handler]
-fn panic(_panic: &PanicInfo<'_>) -> ! {
-    writeln!(log(), "{}", _panic).ok(); // Do not panic in panic
-    loop {}
-}
 
 #[unsafe(export_name = "main")]
 fn main() -> ! {
     writeln!(log(), "Car OS starting up...").ok();
 
-    let car_state = CarState::bind(bot::SLOT2);
-    let mut car_controls = CarControls::bind(bot::SLOT3);
-    let mut spline = SplineQuery::bind(bot::SLOT4);
+    let car_state = CarState::bind(SLOT2);
+    let mut car_controls = CarControls::bind(SLOT3);
+    let mut spline = SplineQuery::bind(SLOT4);
 
     // Read t_max once at startup
     spline.query(0.0);
