@@ -17,4 +17,4 @@ doctest = false
 bench = false
 
 [dependencies]
-racehub-bot-sdk = { git = "https://github.com/mkreu/programming-game.git", branch = "main" }
+botracers-bot-sdk = { git = "https://github.com/mkreu/programming-game.git", branch = "main" }

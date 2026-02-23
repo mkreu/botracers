@@ -1,5 +1,5 @@
 [package]
-name = "racehub-bot-sdk"
+name = "botracers-bot-sdk"
 version = "0.1.0"
 edition = "2024"
 

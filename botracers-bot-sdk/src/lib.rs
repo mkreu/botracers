@@ -16,7 +16,7 @@ pub fn log() -> Log {
     Log::bind(SLOT1)
 }
 
-#[cfg(feature = "panic-handler")]
+#[cfg(all(feature = "panic-handler", target_os = "none"))]
 mod panic_support {
     use core::{fmt::Write, panic::PanicInfo};
 
@@ -29,7 +29,7 @@ mod panic_support {
     }
 }
 
-#[cfg(feature = "global-allocator")]
+#[cfg(all(feature = "global-allocator", target_os = "none"))]
 mod allocator_support {
     use core::alloc::{GlobalAlloc, Layout};
     use core::cell::UnsafeCell;

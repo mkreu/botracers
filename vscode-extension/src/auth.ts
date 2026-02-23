@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 
 import { openLoginWebview } from './views/loginWebview';
 
-const TOKEN_KEY = 'racehub.token';
+const TOKEN_KEY = 'botracers.token';
 
 export async function readToken(context: vscode.ExtensionContext): Promise<string | undefined> {
   return await context.secrets.get(TOKEN_KEY) ?? undefined;

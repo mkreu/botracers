@@ -17,7 +17,7 @@ use axum::{
 };
 use base64::Engine;
 use chrono::Utc;
-use race_protocol::{
+use botracers_protocol::{
     ArtifactSummary, ErrorResponse, LoginRequest, LoginResponse, RegisterRequest,
     ServerCapabilities, UpdateArtifactVisibilityRequest, UploadArtifactRequest,
     UploadArtifactResponse, UserInfo,
@@ -31,7 +31,7 @@ use tracing::{debug, info, warn};
 
 const LOCAL_USER_ID: i64 = 1;
 const LOCAL_USERNAME: &str = "local";
-const COOKIE_NAME: &str = "racehub_session";
+const COOKIE_NAME: &str = "botracers_session";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuthMode {
@@ -74,8 +74,8 @@ impl Default for ServerConfig {
     fn default() -> Self {
         Self {
             bind: "127.0.0.1:8787".to_string(),
-            db_path: PathBuf::from("racehub.db"),
-            artifacts_dir: PathBuf::from("racehub_artifacts"),
+            db_path: PathBuf::from("botracers.db"),
+            artifacts_dir: PathBuf::from("botracers_artifacts"),
             static_dir: Some(PathBuf::from("web-dist")),
             auth_mode: AuthMode::Required,
             cookie_secure: false,
@@ -182,7 +182,7 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
         artifacts_dir = %config.artifacts_dir.display(),
         static_dir = ?config.static_dir.as_ref().map(|p| p.display().to_string()),
         registration_enabled = config.registration_enabled,
-        "starting racehub server"
+        "starting botracers server"
     );
 
     std::fs::create_dir_all(&config.artifacts_dir)?;
@@ -203,11 +203,11 @@ pub async fn run_server(config: ServerConfig) -> Result<(), Box<dyn std::error::
 
     let addr: SocketAddr = config.bind.parse()?;
     let listener = tokio::net::TcpListener::bind(addr).await?;
-    info!(%addr, "racehub listening");
+    info!(%addr, "botracers listening");
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await?;
-    info!("racehub server shutdown complete");
+    info!("botracers server shutdown complete");
     Ok(())
 }
 
@@ -265,7 +265,7 @@ fn build_app(state: AppState, static_dir: Option<PathBuf>) -> Router {
         info!(static_dir = %dir.display(), "serving static files");
         app = app.fallback_service(ServeDir::new(dir));
     } else {
-        warn!("static file serving disabled (RACEHUB_STATIC_DIR empty)");
+        warn!("static file serving disabled (BOTRACERS_STATIC_DIR empty)");
     }
 
     app
@@ -892,7 +892,7 @@ fn render_login_page(
          <head>\
          <meta charset=\"utf-8\" />\
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\
-         <title>RaceHub Login</title>\
+         <title>BotRacers Login</title>\
          <style>\
          body {{ margin:0; min-height:100vh; display:grid; place-items:center; font-family:system-ui,sans-serif; background:#0f1217; color:#f5f7fb; }}\
          .card {{ width:min(420px, calc(100vw - 2rem)); background:#171c24; border:1px solid #2a3240; border-radius:12px; padding:1.25rem; box-sizing:border-box; }}\
@@ -907,7 +907,7 @@ fn render_login_page(
          </head>\
          <body>\
          <main class=\"card\">\
-         <h1>Sign in to RaceHub</h1>\
+         <h1>Sign in to BotRacers</h1>\
          {error_html}\
          <form method=\"post\" action=\"/login\">\
          <input type=\"hidden\" name=\"next\" value=\"{escaped_next}\" />\
@@ -938,7 +938,7 @@ fn render_register_page(next: &str, username: Option<&str>, error: Option<&str>)
          <head>\
          <meta charset=\"utf-8\" />\
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />\
-         <title>RaceHub Register</title>\
+         <title>BotRacers Register</title>\
          <style>\
          body {{ margin:0; min-height:100vh; display:grid; place-items:center; font-family:system-ui,sans-serif; background:#0f1217; color:#f5f7fb; }}\
          .card {{ width:min(420px, calc(100vw - 2rem)); background:#171c24; border:1px solid #2a3240; border-radius:12px; padding:1.25rem; box-sizing:border-box; }}\
@@ -953,7 +953,7 @@ fn render_register_page(next: &str, username: Option<&str>, error: Option<&str>)
          </head>\
          <body>\
          <main class=\"card\">\
-         <h1>Create RaceHub account</h1>\
+         <h1>Create BotRacers account</h1>\
          {error_html}\
          <form method=\"post\" action=\"/register\">\
          <input type=\"hidden\" name=\"next\" value=\"{escaped_next}\" />\
@@ -1142,7 +1142,7 @@ mod tests {
         body::{Body, to_bytes},
         http::Request,
     };
-    use race_protocol::{
+    use botracers_protocol::{
         ArtifactSummary, LoginResponse, UpdateArtifactVisibilityRequest, UploadArtifactRequest,
     };
     use tower::ServiceExt;
@@ -1159,8 +1159,8 @@ mod tests {
         auth_mode: AuthMode,
         registration_enabled: bool,
     ) -> (AppState, PathBuf, PathBuf) {
-        let static_dir = unique_temp_dir("racehub_static");
-        let artifacts_dir = unique_temp_dir("racehub_artifacts");
+        let static_dir = unique_temp_dir("botracers_static");
+        let artifacts_dir = unique_temp_dir("botracers_artifacts");
         std::fs::write(
             static_dir.join("index.html"),
             "<html><body>game entry</body></html>",
@@ -1309,7 +1309,7 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
         let body = to_bytes(resp.into_body(), usize::MAX).await.expect("body");
         let text = String::from_utf8(body.to_vec()).expect("utf8");
-        assert!(text.contains("Sign in to RaceHub"));
+        assert!(text.contains("Sign in to BotRacers"));
         assert!(text.contains("name=\"next\" value=\"/\""));
 
         let _ = std::fs::remove_dir_all(static_dir);
@@ -1378,7 +1378,7 @@ mod tests {
             .expect("set-cookie")
             .to_str()
             .expect("cookie str");
-        assert!(cookie.contains("racehub_session="));
+        assert!(cookie.contains("botracers_session="));
 
         let _ = std::fs::remove_dir_all(static_dir);
         let _ = std::fs::remove_dir_all(artifacts_dir);

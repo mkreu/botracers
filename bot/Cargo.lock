@@ -27,7 +27,7 @@ dependencies = [
 name = "bot"
 version = "0.1.0"
 dependencies = [
- "racehub-bot-sdk",
+ "botracers-bot-sdk",
 ]
 
 [[package]]
@@ -121,7 +121,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "racehub-bot-sdk"
+name = "botracers-bot-sdk"
 version = "0.1.0"
 dependencies = [
  "bevy_math",

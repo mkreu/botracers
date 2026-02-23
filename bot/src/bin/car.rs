@@ -3,7 +3,7 @@
 
 use core::{f32::consts::PI, fmt::Write};
 
-use racehub_bot_sdk::{
+use botracers_bot_sdk::{
     driving::{CarControls, CarState, SplineQuery},
     log, SLOT2, SLOT3, SLOT4,
 };

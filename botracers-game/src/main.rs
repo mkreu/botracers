@@ -16,22 +16,22 @@ use bevy::{
 };
 use emulator::bevy::{CpuComponent, cpu_system};
 use emulator::cpu::LogDevice;
-use race_protocol::{
+use botracers_protocol::{
     ArtifactSummary, ServerCapabilities, UpdateArtifactVisibilityRequest, UploadArtifactRequest,
     UploadArtifactResponse,
 };
 #[cfg(not(target_arch = "wasm32"))]
-use race_protocol::{LoginRequest, LoginResponse};
+use botracers_protocol::{LoginRequest, LoginResponse};
 #[cfg(not(target_arch = "wasm32"))]
-use racehub::{AuthMode, ServerConfig};
+use botracers_server::{AuthMode, ServerConfig};
 
-use racing::Car;
-use racing::devices::{self, TrackRadarBorders};
-use racing::devices::{
+use botracers_game::Car;
+use botracers_game::devices::{self, TrackRadarBorders};
+use botracers_game::devices::{
     CarControlsDevice, CarRadarDevice, CarStateDevice, SplineDevice, TrackRadarDevice,
 };
-use racing::track;
-use racing::track_format::TrackFile;
+use botracers_game::track;
+use botracers_game::track_format::TrackFile;
 
 mod ui;
 
@@ -178,7 +178,7 @@ mod main_game {
                     }
                     #[cfg(not(target_arch = "wasm32"))]
                     {
-                        std::env::var("RACEHUB_URL")
+                        std::env::var("BOTRACERS_URL")
                             .unwrap_or_else(|_| "http://127.0.0.1:8787".to_string())
                     }
                 },
@@ -226,9 +226,9 @@ fn main() {
 
     #[cfg(not(target_arch = "wasm32"))]
     let standalone_url = if standalone_mode {
-        let bind = std::env::var("RACEHUB_STANDALONE_BIND")
+        let bind = std::env::var("BOTRACERS_STANDALONE_BIND")
             .unwrap_or_else(|_| "127.0.0.1:8787".to_string());
-        spawn_embedded_racehub(bind.clone());
+        spawn_embedded_botracers(bind.clone());
         Some(format!("http://{bind}"))
     } else {
         None
@@ -263,7 +263,7 @@ fn main() {
         .add_plugins((
             DefaultPlugins.set(WindowPlugin {
                 primary_window: Some(Window {
-                    title: "Programming Game".into(),
+                    title: "BotRacers".into(),
                     fit_canvas_to_parent: true,
                     ..default()
                 }),
@@ -340,7 +340,7 @@ fn main() {
 fn prompt_cli_credentials() -> Result<Option<(String, String)>, String> {
     use std::io::{self, Write};
 
-    print!("RaceHub username (leave empty to skip): ");
+    print!("BotRacers username (leave empty to skip): ");
     io::stdout()
         .flush()
         .map_err(|e| format!("stdout flush failed: {e}"))?;
@@ -353,7 +353,7 @@ fn prompt_cli_credentials() -> Result<Option<(String, String)>, String> {
         return Ok(None);
     }
 
-    print!("RaceHub password: ");
+    print!("BotRacers password: ");
     io::stdout()
         .flush()
         .map_err(|e| format!("stdout flush failed: {e}"))?;
@@ -382,24 +382,24 @@ fn create_artifact_fetch_pipeline() -> ArtifactFetchPipeline {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn spawn_embedded_racehub(bind: String) {
+fn spawn_embedded_botracers(bind: String) {
     let mut config = ServerConfig::default();
     config.bind = bind;
     config.auth_mode = AuthMode::Disabled;
     config.db_path = PathBuf::from(
-        std::env::var("RACEHUB_DB_PATH").unwrap_or_else(|_| "racehub.db".to_string()),
+        std::env::var("BOTRACERS_DB_PATH").unwrap_or_else(|_| "botracers.db".to_string()),
     );
     config.artifacts_dir = PathBuf::from(
-        std::env::var("RACEHUB_ARTIFACTS_DIR").unwrap_or_else(|_| "racehub_artifacts".to_string()),
+        std::env::var("BOTRACERS_ARTIFACTS_DIR").unwrap_or_else(|_| "botracers_artifacts".to_string()),
     );
     config.static_dir = None;
 
     std::thread::spawn(move || {
         let runtime = tokio::runtime::Runtime::new()
-            .expect("failed to create tokio runtime for embedded racehub");
+            .expect("failed to create tokio runtime for embedded botracers");
         runtime
-            .block_on(racehub::run_server(config))
-            .expect("embedded racehub crashed");
+            .block_on(botracers_server::run_server(config))
+            .expect("embedded botracers crashed");
     });
 }
 

@@ -7,14 +7,14 @@ A racing game prototype where cars can be driven by AI implemented as **RISC-V p
 ## Workspace Structure
 
 ```
-Cargo.toml            # Workspace root — members: racing, emulator, race-protocol, racehub, racehub-bot-sdk. Excludes bot.
-Dockerfile            # Multi-stage production image build (racehub binary + web-dist wasm build)
+Cargo.toml            # Workspace root — members: botracers-game, emulator, botracers-protocol, botracers-server, botracers-bot-sdk. Excludes bot.
+Dockerfile            # Multi-stage production image build (botracers-server binary + web-dist wasm build)
 /.github/workflows/   # CI workflows, including GHCR container publish and VSCode .vsix artifact build
-├── racing/           # Bevy game — physics, rendering, car spawning, AI systems
+├── botracers-game/           # Bevy game — physics, rendering, car spawning, AI systems
 ├── emulator/         # Use-case-agnostic RISC-V emulator (RV32IMAFC + RV32C/Zcf) with Bevy integration
-├── race-protocol/    # Shared API DTOs used by backend/client/game/extension
-├── racehub/          # Minimal backend (auth + artifact storage/list/download/delete)
-├── racehub-bot-sdk/  # Shared no_std bot SDK (MMIO bindings, log device, optional panic+allocator runtime)
+├── botracers-protocol/    # Shared API DTOs used by backend/client/game/extension
+├── botracers-server/   # Minimal backend (auth + artifact storage/list/download/delete)
+├── botracers-bot-sdk/  # Shared no_std bot SDK (MMIO bindings, log device, optional panic+allocator runtime)
 ├── vscode-extension/ # VSCode extension for bot bootstrap + build/upload + artifact management (not a Cargo crate)
 └── bot/              # no_std RISC-V programs compiled to bare-metal ELF (separate target)
 ```
@@ -27,29 +27,29 @@ Dockerfile            # Multi-stage production image build (racehub binary + web
 
 ```bash
 # Run the racing game (from workspace root)
-cargo run --bin racing [-- path/to/track.toml]
-# Default track: racing/assets/track1.toml
+cargo run --bin botracers [-- path/to/track.toml]
+# Default track: botracers-game/assets/track1.toml
 
-# Run racing in standalone mode (embedded racehub, auth disabled)
-cargo run --bin racing -- --standalone
+# Run BotRacers in standalone mode (embedded botracers-server, auth disabled)
+cargo run --bin botracers -- --standalone
 
 # Run the single-node backend (default bind: 127.0.0.1:8787)
-cargo run -p racehub
+cargo run -p botracers-server
 
 # Build web artifacts into web-dist/
 ./scripts/build_web.sh [--release]
 
-# Build + serve web app through racehub
+# Build + serve web app through botracers-server
 ./scripts/serve_web.sh [--release]
 
-# Build production container (racehub + web-dist)
-docker build -t racehub:test .
+# Build production container (botracers-server + web-dist)
+docker build -t botracers:test .
 
 # Run container with persistent data volume
-docker run --rm -p 8787:8787 -v racehub-data:/data ghcr.io/<owner>/racehub:latest
+docker run --rm -p 8787:8787 -v botracers-data:/data ghcr.io/<owner>/botracers:latest
 ```
 
-Cars are spawned from ELF artifacts fetched from `racehub` (or uploaded manually in-game). Local runtime bot compilation/discovery is intentionally removed from `racing`.
+Cars are spawned from ELF artifacts fetched from `botracers-server` (or uploaded manually in-game). Local runtime bot compilation/discovery is intentionally removed from `botracers-game`.
 
 ## Crate Details
 
@@ -91,13 +91,13 @@ Devices receive **offset-relative addresses** (i.e., `addr & 0xFF`), not absolut
 
 - Target: `riscv32imafc-unknown-none-elf` (configured in `bot/.cargo/config.toml`)
 - Linker script `link.x` places `.text` at `0x1000` (start of DRAM)
-- Depends on `racehub-bot-sdk` for slot constants, MMIO bindings (`CarState`, `CarControls`, `SplineQuery`, `TrackRadar`, `CarRadar`), log writer, and default runtime (`panic-handler` + `global-allocator` features)
+- Depends on `botracers-bot-sdk` for slot constants, MMIO bindings (`CarState`, `CarControls`, `SplineQuery`, `TrackRadar`, `CarRadar`), log writer, and default runtime (`panic-handler` + `global-allocator` features)
 - `.cargo/config.toml` and local `link.x` stay in each bot repo; target/linker wiring is crate-local on stable Rust
 - `bin/car.rs` — The car AI: infinite loop reading state, querying spline, computing steering/braking, writing controls
 - `bin/car_radar.rs` — Radar-only car AI using `TrackRadar` (no spline-following dependency)
 - `bin/bottles.rs` — Test program (99 bottles of beer via log device)
 
-### `racehub-bot-sdk/` — Shared Bot Runtime + MMIO API
+### `botracers-bot-sdk/` — Shared Bot Runtime + MMIO API
 
 - `no_std` crate used by local `bot/` and VSCode-initialized bot repos
 - Exposes `pub mod driving`, `pub mod log`, slot constants (`SLOT1..SLOT6`), and `log()`
@@ -160,21 +160,21 @@ Rays are cast in a forward cone (currently 7 rays over 90°). Distances are near
 
 Entries are absolute world positions of nearest cars, strictly nearest-first and excluding self. Missing entries are encoded as `NaN` pairs.
 
-### `race-protocol/` — Shared API Types
+### `botracers-protocol/` — Shared API Types
 
 - Shared request/response DTOs for backend/client/game/extension.
 - Defines minimal v1 payloads for auth, capabilities, artifact metadata (including owner username, visibility, and ownership flags), artifact visibility updates, and artifact upload.
 - Keep this crate transport-agnostic and serde-only.
 
-### `racehub/` — Single-Executable Backend
+### `botracers-server/` — Single-Executable Backend
 
-- One Axum HTTP process with SQLite (`RACEHUB_DB_PATH`, default `racehub.db`) and filesystem artifact store (`RACEHUB_ARTIFACTS_DIR`, default `racehub_artifacts/`).
+- One Axum HTTP process with SQLite (`BOTRACERS_DB_PATH`, default `botracers.db`) and filesystem artifact store (`BOTRACERS_ARTIFACTS_DIR`, default `botracers_artifacts/`).
 - Browser web routes:
   - `GET /` and `GET /index.html` serve the web game entry.
   - In `required` auth mode, unauthenticated access to `/` or `/index.html` renders a login page first.
   - `GET /login` serves login form HTML and `POST /login` authenticates then redirects back to `next` (default `/`).
   - `GET /register` serves registration form HTML and `POST /register` creates an account and logs in, then redirects back to `next` (default `/`).
-  - `RACEHUB_REGISTRATION_ENABLED=false` disables registration (API and web flow).
+  - `BOTRACERS_REGISTRATION_ENABLED=false` disables registration (API and web flow).
 - API endpoints:
   - `GET /api/v1/capabilities`
   - `POST /api/v1/auth/register`
@@ -192,25 +192,25 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
   - only owners can delete or change visibility
 - Uses session tokens stored in SQLite and accepts either:
   - `Authorization: Bearer <token>` (VSCode extension / native clients)
-  - `racehub_session` cookie (browser/web game flow)
-- Supports auth modes via `RACEHUB_AUTH_MODE`:
+  - `botracers_session` cookie (browser/web game flow)
+- Supports auth modes via `BOTRACERS_AUTH_MODE`:
   - `required` (normal server mode)
   - `disabled` (standalone mode, implicit local user)
-- `RACEHUB_COOKIE_SECURE` controls whether the session cookie is marked `Secure`.
-- `RACEHUB_REGISTRATION_ENABLED` controls whether account registration endpoints/UI are enabled (default `true`).
-- `RACEHUB_STATIC_DIR` controls which static directory is served (default `web-dist`; empty disables static serving).
+- `BOTRACERS_COOKIE_SECURE` controls whether the session cookie is marked `Secure`.
+- `BOTRACERS_REGISTRATION_ENABLED` controls whether account registration endpoints/UI are enabled (default `true`).
+- `BOTRACERS_STATIC_DIR` controls which static directory is served (default `web-dist`; empty disables static serving).
 - Server uses graceful shutdown on process signals (`SIGINT`/`SIGTERM` on Unix, `Ctrl-C` elsewhere).
-- `racehub` emits concise tracing logs for startup/shutdown, static serving mode, login failures, and artifact upload/delete actions.
+- `botracers-server` emits concise tracing logs for startup/shutdown, static serving mode, login failures, and artifact upload/delete actions.
 - Backend scope is intentionally minimal: auth + artifact storage/list/download/delete.
 - Production container image is built by the root `Dockerfile` and includes:
-  - release `racehub` binary
-  - release wasm game bundle in `/opt/racehub/web-dist`
+  - release `botracers-server` binary
+  - release wasm game bundle in `/opt/botracers/web-dist`
   - OCI-first metadata: no Dockerfile `HEALTHCHECK` directive (use `/healthz` endpoint for probes)
   - no `wasm-opt` step in container builds; web artifacts are produced by `./scripts/build_web.sh --release`
-  - defaults: `RACEHUB_BIND=0.0.0.0:8787`, `RACEHUB_DB_PATH=/data/racehub.db`, `RACEHUB_ARTIFACTS_DIR=/data/racehub_artifacts`, `RACEHUB_STATIC_DIR=/opt/racehub/web-dist`
-- GHCR publish workflow: `.github/workflows/publish-racehub-image.yml`
+  - defaults: `BOTRACERS_BIND=0.0.0.0:8787`, `BOTRACERS_DB_PATH=/data/botracers.db`, `BOTRACERS_ARTIFACTS_DIR=/data/botracers_artifacts`, `BOTRACERS_STATIC_DIR=/opt/botracers/web-dist`
+- GHCR publish workflow: `.github/workflows/publish-botracers-image.yml`
   - triggers on pushes to `main` and tags `v*`
-  - publishes `linux/amd64` images to `ghcr.io/<owner>/racehub`
+  - publishes `linux/amd64` images to `ghcr.io/<owner>/botracers`
   - uses Docker BuildKit `type=gha` cache and `cargo-chef` dependency-layer caching
 - VSCode extension build workflow: `.github/workflows/build-vscode-extension.yml`
   - triggers on pushes and pull requests to `main` plus manual dispatch
@@ -221,30 +221,30 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
 
 - TypeScript VSCode extension.
 - Commands:
-  - `RaceHub: Configure Server URL`
-  - `RaceHub: Login` (webview form)
-  - `RaceHub: Initialize Bot Project`
-  - `RaceHub: Open Bot Project`
+  - `BotRacers: Configure Server URL`
+  - `BotRacers: Login` (webview form)
+  - `BotRacers: Initialize Bot Project`
+  - `BotRacers: Open Bot Project`
 - Server URL is profile-only (no raw server URL setting):
   - `production` -> `https://racers.mlkr.eu` (default)
   - `localhost` -> `http://127.0.0.1:8787`
-  - `custom` -> `racehub.customServerUrl`
-- `RaceHub` tree view is contributed directly to the built-in Explorer sidebar with explicit states:
+  - `custom` -> `botracers.customServerUrl`
+- `BotRacers` tree view is contributed directly to the built-in Explorer sidebar with explicit states:
   - `loggedOut`: rendered through VS Code Welcome View content (login/server actions with context-specific variants like session expiry or request errors)
   - `needsWorkspace`: rendered through VS Code Welcome View content (initialize/open actions with context-specific variants like missing workspace or no binaries)
   - `ready`: local binaries + remote artifacts
 - Action density policy:
-  - RaceHub tree inline icon actions for local binaries: `Build & Upload`, `Build`, `Reveal ELF Path`
-  - RaceHub tree inline icon actions on owned artifacts: `Replace`, `Toggle Visibility`, `Delete`
+  - BotRacers tree inline icon actions for local binaries: `Build & Upload`, `Build`, `Reveal ELF Path`
+  - BotRacers tree inline icon actions on owned artifacts: `Replace`, `Toggle Visibility`, `Delete`
   - the same owned-artifact actions are also available in the context menu
 - Local bin discovery uses `Cargo.toml` (`[[bin]]` including optional `path`) and `src/bin/*.rs`.
 - Bootstrap template assets: `vscode-extension/templates/bot-starter/` (`Cargo.toml`, `.cargo/config.toml`, `link.x`, `src/bin/car.rs`)
-- Starter template imports `racehub-bot-sdk` from git (`branch = "main"`) and relies on SDK defaults for panic handler + allocator.
-- Template rule: keep local linker/target files minimal (`.cargo/config.toml`, `link.x`) and treat `racehub-bot-sdk` as the source of truth for bot MMIO/log/runtime helpers.
+- Starter template imports `botracers-bot-sdk` from git (`branch = "main"`) and relies on SDK defaults for panic handler + allocator.
+- Template rule: keep local linker/target files minimal (`.cargo/config.toml`, `link.x`) and treat `botracers-bot-sdk` as the source of truth for bot MMIO/log/runtime helpers.
 - Replacement semantics are best-effort cleanup: upload new artifact first, then delete selected old artifact if owned.
 - Detects server capabilities and skips auth flow automatically when `auth_required=false`.
 
-### `racing/` — The Game
+### `botracers-game/` — The Game
 
 - **`main.rs`** — Bevy app setup, game state management (`SimState`), event-based car spawning, physics, free camera with follow-on-select, two AI systems
 - **`ui.rs`** — `RaceUiPlugin`: right-side panel with persistent server status dialog, refresh/upload artifact buttons, artifact list with owner + visibility labels and per-artifact actions (spawn for all visible artifacts, delete/visibility toggle for owned artifacts), start/pause/reset, spawned-car controls (follow/gizmos/remove), and console output.
@@ -253,14 +253,14 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
 - **`track_format.rs`** — TOML-based track file format (`TrackFile`)
 - **`bin/editor.rs`** — Track editor tool
 - Web API integration in `main.rs`/`ui.rs` now supports:
-  - capability checks against `racehub`
+  - capability checks against `botracers-server`
   - native CLI credential prompt (non-wasm) and login when required
   - browser-cookie-based auth for wasm/web builds (no in-game login fields)
   - same-origin API URL default in wasm/web builds (relative `/api/...` requests) to avoid cookie loss across hostname mismatches
   - wasm canvas autosizing via `Window.fit_canvas_to_parent = true` (fills and tracks browser viewport with matching `index.html` CSS)
   - loading artifact lists
   - manual artifact upload from file chooser (native + web)
-  - deleting artifacts from RaceHub storage
+  - deleting artifacts from BotRacers storage
   - toggling artifact visibility (`public`/`private`) for owned artifacts
   - spawning cars directly from artifact list rows (`DriverType::RemoteArtifact`) by downloading ELF via HTTP
 
@@ -302,13 +302,13 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
 
 0. **No compatibility stubs unless requested** — When refactoring APIs, do not keep unused backward-compatibility code paths, deprecated wrappers, or dead shim layers unless explicitly requested. Prefer deleting old forms and updating all call sites.
 
-1. **Emulator is use-case agnostic** — Car-specific devices (`CarStateDevice`, `CarControlsDevice`, `SplineDevice`) live in `racing/`, not in `emulator/`. The emulator only provides `Device`, `Mmu`, `LogDevice` (buffered), `CpuComponent`, and the plugin.
+1. **Emulator is use-case agnostic** — Car-specific devices (`CarStateDevice`, `CarControlsDevice`, `SplineDevice`) live in `botracers-game/`, not in `emulator/`. The emulator only provides `Device`, `Mmu`, `LogDevice` (buffered), `CpuComponent`, and the plugin.
 
 2. **Each emulator car is fully isolated** — Separate `Hart`, `Dram`, and device-component instances per car entity. No shared state between emulator instances. Each car has its own `SplineDevice` with a cloned copy of the track spline.
 
 3. **Device addressing** — The `Mmu` strips the high bits and passes offset-relative addresses (`addr & 0xFF`) to devices. Devices don't need to know their absolute slot address.
 
-4. **Driver source is artifact-only** — Cars are spawned from artifacts served by `racehub`; local runtime bot compilation/discovery is intentionally removed from `racing`.
+4. **Driver source is artifact-only** — Cars are spawned from artifacts served by `botracers-server`; local runtime bot compilation/discovery is intentionally removed from `botracers-game`.
 
 5. **Instruction budget matters** — The `instructions_per_update` value (currently 10000) must be high enough for each bot loop iteration to make progress, but low enough to avoid burning host CPU.
 
@@ -323,9 +323,9 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
 ## Common Pitfalls
 
 - **Web artifact flow may require auth** — In server mode: native uses bearer token after CLI login, web uses browser session cookie. In standalone mode auth is disabled.
-- **Embedded standalone startup race** — Initial capability fetch can fail if embedded `racehub` has not yet bound; retry from the UI.
+- **Embedded standalone startup race** — Initial capability fetch can fail if embedded `botracers-server` has not yet bound; retry from the UI.
 - **Device index vs slot address** — Device index 0 = address 0x100, index 1 = 0x200, etc. Off-by-one errors here will silently read zeros or fail.
 - **Mmu passes offsets, not absolute addresses** — If you implement a new device, your `load`/`store` will receive `addr & 0xFF`, not the full address.
 - **`instructions_per_update` tuning** — Too low and the bot can't complete a loop iteration per tick. Too high and it burns CPU time.
-- **Bump allocator in SDK defaults** — `racehub-bot-sdk` default features provide a 4 KiB bump allocator that never frees. Allocating in a loop will eventually OOM. Current bot code doesn't allocate in its hot loop, but be careful adding features that do.
+- **Bump allocator in SDK defaults** — `botracers-bot-sdk` default features provide a 4 KiB bump allocator that never frees. Allocating in a loop will eventually OOM. Current bot code doesn't allocate in its hot loop, but be careful adding features that do.
 - **Compressed immediates are easy to misdecode** — For `C.ADDI/C.LI/C.LUI/C.ANDI`, immediate sign comes from `inst[12]` mapped to imm bit 5. Missing that sign bit causes silent control-flow/data corruption.

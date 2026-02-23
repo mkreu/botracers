@@ -1,28 +1,28 @@
-# Programming Game
+# BotRacers
 
-Rust/Bevy racing prototype where cars run RISC-V ELF artifacts fetched from RaceHub.
+Rust/Bevy racing prototype where cars run RISC-V ELF artifacts fetched from BotRacers.
 
 ## Player Onboarding (2 Steps)
 
-1. Register on the RaceHub site (`/register`) when running in server mode (`RACEHUB_AUTH_MODE=required`).
+1. Register on the BotRacers site (`/register`) when running in server mode (`BOTRACERS_AUTH_MODE=required`).
 2. Install the VSCode extension from a packaged `.vsix` artifact (manual install for now).
 
 Recommended workflow after onboarding:
-- Run `RaceHub: Initialize Bot Project` once to scaffold a starter `bot` project.
-- Use the RaceHub sidebar to build/upload local binaries and manage uploaded artifacts.
-- Starter projects keep only minimal local toolchain files (`.cargo/config.toml`, `link.x`, `src/bin/car.rs`) and import bot MMIO/runtime helpers from `racehub-bot-sdk`.
+- Run `BotRacers: Initialize Bot Project` once to scaffold a starter `bot` project.
+- Use the BotRacers sidebar to build/upload local binaries and manage uploaded artifacts.
+- Starter projects keep only minimal local toolchain files (`.cargo/config.toml`, `link.x`, `src/bin/car.rs`) and import bot MMIO/runtime helpers from `botracers-bot-sdk`.
 
 ## Run Modes
 
 ### 1) Standalone mode (single process, no auth)
-Run game + embedded RaceHub in one binary:
+Run game + embedded BotRacers in one binary:
 
 ```bash
-cargo run --bin racing -- --standalone
+cargo run --bin botracers -- --standalone
 ```
 
 Behavior:
-- Game starts embedded RaceHub on `http://127.0.0.1:8787` (override with `RACEHUB_STANDALONE_BIND`).
+- Game starts embedded BotRacers on `http://127.0.0.1:8787` (override with `BOTRACERS_STANDALONE_BIND`).
 - Auth is disabled.
 - Game and VSCode extension can upload/list/download/delete artifacts without login.
 
@@ -30,61 +30,61 @@ Behavior:
 Start backend:
 
 ```bash
-cargo run -p racehub
+cargo run -p botracers-server
 ```
 
 Start game in another terminal:
 
 ```bash
-cargo run --bin racing
+cargo run --bin botracers
 ```
 
 Behavior:
-- Backend default URL: `http://127.0.0.1:8787` (override via `RACEHUB_BIND`).
+- Backend default URL: `http://127.0.0.1:8787` (override via `BOTRACERS_BIND`).
 - Backend auth mode defaults to required.
 - Native game asks for username/password in terminal on startup.
 - Web game uses browser session cookies.
   - Browser/wasm API requests default to same-origin paths (`/api/...`) to keep cookie auth working even when hostnames differ (`localhost` vs `127.0.0.1`).
-  - If not logged in, visiting `/` or `/index.html` shows a RaceHub login form.
+  - If not logged in, visiting `/` or `/index.html` shows a BotRacers login form.
   - If registration is enabled, login page includes a "Create account" link to `/register`.
   - Successful login redirects back to the requested game page.
 - VSCode extension uses bearer token login.
 
 ## Backend Environment Variables
 
-- `RACEHUB_BIND` (default `127.0.0.1:8787`)
-- `RACEHUB_DB_PATH` (default `racehub.db`)
-- `RACEHUB_ARTIFACTS_DIR` (default `racehub_artifacts`)
-- `RACEHUB_AUTH_MODE` (`required` or `disabled`, default `required`)
-- `RACEHUB_COOKIE_SECURE` (`true/false`, default `false`)
-- `RACEHUB_REGISTRATION_ENABLED` (`true/false`, default `true`)
-- `RACEHUB_STATIC_DIR` (default `web-dist`, set empty to disable static serving)
+- `BOTRACERS_BIND` (default `127.0.0.1:8787`)
+- `BOTRACERS_DB_PATH` (default `botracers.db`)
+- `BOTRACERS_ARTIFACTS_DIR` (default `botracers_artifacts`)
+- `BOTRACERS_AUTH_MODE` (`required` or `disabled`, default `required`)
+- `BOTRACERS_COOKIE_SECURE` (`true/false`, default `false`)
+- `BOTRACERS_REGISTRATION_ENABLED` (`true/false`, default `true`)
+- `BOTRACERS_STATIC_DIR` (default `web-dist`, set empty to disable static serving)
 
 For standalone backend without game:
 
 ```bash
-RACEHUB_AUTH_MODE=disabled cargo run -p racehub
+BOTRACERS_AUTH_MODE=disabled cargo run -p botracers-server
 ```
 
-## Docker (RaceHub + Web Game)
+## Docker (BotRacers + Web Game)
 
 Build the production image locally:
 
 ```bash
-docker build -t racehub:test .
+docker build -t botracers:test .
 ```
 
 Run it with persisted data:
 
 ```bash
-docker run --rm -p 8787:8787 -v racehub-data:/data ghcr.io/<owner>/racehub:latest
+docker run --rm -p 8787:8787 -v botracers-data:/data ghcr.io/<owner>/botracers:latest
 ```
 
 Container defaults:
-- `RACEHUB_BIND=0.0.0.0:8787`
-- `RACEHUB_DB_PATH=/data/racehub.db`
-- `RACEHUB_ARTIFACTS_DIR=/data/racehub_artifacts`
-- `RACEHUB_STATIC_DIR=/opt/racehub/web-dist`
+- `BOTRACERS_BIND=0.0.0.0:8787`
+- `BOTRACERS_DB_PATH=/data/botracers.db`
+- `BOTRACERS_ARTIFACTS_DIR=/data/botracers_artifacts`
+- `BOTRACERS_STATIC_DIR=/opt/botracers/web-dist`
 
 Container image notes:
 - OCI-first image: Dockerfile intentionally omits Docker `HEALTHCHECK` metadata to avoid Podman OCI warnings.
@@ -98,10 +98,10 @@ Quick checks:
 
 ## GHCR Publish Workflow
 
-GitHub Actions workflow: `.github/workflows/publish-racehub-image.yml`
+GitHub Actions workflow: `.github/workflows/publish-botracers-image.yml`
 
 Behavior:
-- Pushes container images to `ghcr.io/<owner>/racehub`
+- Pushes container images to `ghcr.io/<owner>/botracers`
 - Triggers on:
   - pushes to `main`
   - pushes of tags matching `v*`
@@ -142,14 +142,14 @@ Release build:
 
 What this produces:
 - `web-dist/index.html` (generated if missing)
-- `web-dist/racing.js` + `web-dist/racing_bg.wasm`
-- `web-dist/assets/` copied from `racing/assets/`
+- `web-dist/botracers.js` + `web-dist/botracers_bg.wasm`
+- `web-dist/assets/` copied from `botracers-game/assets/`
 - Web canvas is configured to fill and dynamically resize with the browser viewport.
 
-Serve web app (same origin as API, so cookie auth works, or optionally with `RACEHUB_AUTH_MODE=disabled`):
+Serve web app (same origin as API, so cookie auth works, or optionally with `BOTRACERS_AUTH_MODE=disabled`):
 
 ```bash
-cargo run -p racehub
+cargo run -p botracers-server
 ```
 
 ## VSCode Extension (`vscode-extension/`)
@@ -167,12 +167,12 @@ Run/debug in VSCode:
 - Press `F5` to launch Extension Development Host.
 
 Available commands:
-- `RaceHub: Configure Server URL`
-- `RaceHub: Login`
-- `RaceHub: Initialize Bot Project`
-- `RaceHub: Open Bot Project`
+- `BotRacers: Configure Server URL`
+- `BotRacers: Login`
+- `BotRacers: Initialize Bot Project`
+- `BotRacers: Open Bot Project`
 
-Sidebar (`RaceHub` activity bar):
+Sidebar (`BotRacers` activity bar):
 - `loggedOut`: shows login actions only.
 - `needsWorkspace`: shows initialize/open bot project actions only.
 - `ready`: shows `Local Binaries` and `Remote Artifacts`.
@@ -186,7 +186,7 @@ Server URL behavior:
 - Profile-based configuration only:
   - `production` -> `https://racers.mlkr.eu` (default)
   - `localhost` -> `http://127.0.0.1:8787`
-  - `custom` -> `racehub.customServerUrl`
+  - `custom` -> `botracers.customServerUrl`
 
 Replace behavior:
 - “Replace artifact” uploads a new build first, then attempts to delete the selected old artifact (best-effort cleanup; no rollback if delete fails).

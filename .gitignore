@@ -1,4 +1,4 @@
 **/target
-racehub.db
-racehub_artifacts/
+botracers.db
+botracers_artifacts/
 web-dist/

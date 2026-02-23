@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use bevy::{color::palettes::css, input::mouse::MouseWheel, prelude::*, window::PrimaryWindow};
 
-use racing::track::{self, TrackSpline};
-use racing::track_format::TrackFile;
+use botracers_game::track::{self, TrackSpline};
+use botracers_game::track_format::TrackFile;
 
 // ---------------------------------------------------------------------------
 // Main

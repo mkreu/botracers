@@ -1,13 +1,13 @@
-# Programming Game RaceHub VSCode Extension
+# BotRacers VSCode Extension
 
-Integrated workflow for RaceHub onboarding, bot bootstrap, build/upload, and artifact management.
+Integrated workflow for BotRacers onboarding, bot bootstrap, build/upload, and artifact management.
 
 ## Commands
 
-- `RaceHub: Configure Server URL`
-- `RaceHub: Login` (webview form)
-- `RaceHub: Initialize Bot Project`
-- `RaceHub: Open Bot Project`
+- `BotRacers: Configure Server URL`
+- `BotRacers: Login` (webview form)
+- `BotRacers: Initialize Bot Project`
+- `BotRacers: Open Bot Project`
 
 ## Server URL Profiles
 
@@ -15,13 +15,13 @@ The extension no longer uses a raw `serverUrl` setting.
 
 - `production` (default): `https://racers.mlkr.eu`
 - `localhost`: `http://127.0.0.1:8787`
-- `custom`: uses `racehub.customServerUrl`
+- `custom`: uses `botracers.customServerUrl`
 
-Use `RaceHub: Configure Server URL` to switch profiles.
+Use `BotRacers: Configure Server URL` to switch profiles.
 
 ## Explorer View States
 
-The `RaceHub` tree appears inside the built-in Explorer sidebar and has three explicit states:
+The `BotRacers` tree appears inside the built-in Explorer sidebar and has three explicit states:
 
 - `loggedOut`
   - Renders a VS Code Welcome View with state-specific guidance and actions.
@@ -56,7 +56,7 @@ Template files include:
 - `src/bin/car.rs`
 
 Template behavior:
-- Pulls `racehub-bot-sdk` from git (`branch = "main"`).
+- Pulls `botracers-bot-sdk` from git (`branch = "main"`).
 - Uses SDK defaults for panic handler and global allocator.
 - Keeps target/linker wiring local and explicit via `.cargo/config.toml` and `link.x`.
 

@@ -32,7 +32,7 @@ type Node =
   | { kind: 'remoteArtifact'; artifact: ArtifactSummary }
   | { kind: 'message'; message: string };
 
-export class RaceHubItem extends vscode.TreeItem {
+export class BotRacersItem extends vscode.TreeItem {
   constructor(public readonly node: Node) {
     super(itemLabel(node), collapsibleState(node));
     this.contextValue = contextValue(node);
@@ -98,8 +98,8 @@ function contextValue(node: Node): string | undefined {
   }
 }
 
-export class RaceHubViewProvider implements vscode.TreeDataProvider<RaceHubItem> {
-  private readonly onDidChangeTreeDataEmitter = new vscode.EventEmitter<RaceHubItem | undefined>();
+export class BotRacersViewProvider implements vscode.TreeDataProvider<BotRacersItem> {
+  private readonly onDidChangeTreeDataEmitter = new vscode.EventEmitter<BotRacersItem | undefined>();
   readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
 
   private state: ViewState = 'loggedOut';
@@ -170,8 +170,8 @@ export class RaceHubViewProvider implements vscode.TreeDataProvider<RaceHubItem>
   }
 
   private async pushContext(): Promise<void> {
-    await vscode.commands.executeCommand('setContext', 'racehub.state', this.state);
-    await vscode.commands.executeCommand('setContext', 'racehub.stateDetail', this.stateDetail);
+    await vscode.commands.executeCommand('setContext', 'botracers.state', this.state);
+    await vscode.commands.executeCommand('setContext', 'botracers.stateDetail', this.stateDetail);
     await this.pushBinSourcePathsContext();
   }
 
@@ -187,38 +187,38 @@ export class RaceHubViewProvider implements vscode.TreeDataProvider<RaceHubItem>
       allowed[uri.fsPath] = true;
       allowed[uri.path] = true;
     }
-    await vscode.commands.executeCommand('setContext', 'racehub.binSourcePaths', allowed);
+    await vscode.commands.executeCommand('setContext', 'botracers.binSourcePaths', allowed);
   }
 
-  getTreeItem(element: RaceHubItem): vscode.TreeItem {
+  getTreeItem(element: BotRacersItem): vscode.TreeItem {
     return element;
   }
 
-  getChildren(element?: RaceHubItem): vscode.ProviderResult<RaceHubItem[]> {
+  getChildren(element?: BotRacersItem): vscode.ProviderResult<BotRacersItem[]> {
     if (!element) {
       if (this.state === 'loggedOut' || this.state === 'needsWorkspace') {
         return [];
       }
 
-      return [new RaceHubItem({ kind: 'localRoot' }), new RaceHubItem({ kind: 'remoteRoot' })];
+      return [new BotRacersItem({ kind: 'localRoot' }), new BotRacersItem({ kind: 'remoteRoot' })];
     }
 
     const node = element.node;
     if (node.kind === 'localRoot') {
-      return this.localBinaries.map((bin) => new RaceHubItem({ kind: 'localBin', bin }));
+      return this.localBinaries.map((bin) => new BotRacersItem({ kind: 'localBin', bin }));
     }
 
     if (node.kind === 'remoteRoot') {
       if (this.artifacts.length === 0) {
-        return [new RaceHubItem({ kind: 'message', message: 'No artifacts found' })];
+        return [new BotRacersItem({ kind: 'message', message: 'No artifacts found' })];
       }
-      return this.artifacts.map((artifact) => new RaceHubItem({ kind: 'remoteArtifact', artifact }));
+      return this.artifacts.map((artifact) => new BotRacersItem({ kind: 'remoteArtifact', artifact }));
     }
 
     return [];
   }
 
-  async buildBinaryItem(item?: RaceHubItem): Promise<void> {
+  async buildBinaryItem(item?: BotRacersItem): Promise<void> {
     const node = item?.node;
     if (!node || node.kind !== 'localBin') {
       return;
@@ -227,7 +227,7 @@ export class RaceHubViewProvider implements vscode.TreeDataProvider<RaceHubItem>
     void vscode.window.showInformationMessage(`Built binary '${node.bin.name}'`);
   }
 
-  async revealElfPath(item?: RaceHubItem): Promise<void> {
+  async revealElfPath(item?: BotRacersItem): Promise<void> {
     const node = item?.node;
     if (!node || node.kind !== 'localBin') {
       return;
@@ -241,7 +241,7 @@ export class RaceHubViewProvider implements vscode.TreeDataProvider<RaceHubItem>
     await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(elfPath));
   }
 
-  async buildAndUploadBinary(item?: RaceHubItem): Promise<void> {
+  async buildAndUploadBinary(item?: BotRacersItem): Promise<void> {
     const node = item?.node;
     if (!node || node.kind !== 'localBin') {
       return;
@@ -251,7 +251,7 @@ export class RaceHubViewProvider implements vscode.TreeDataProvider<RaceHubItem>
     await this.refreshArtifacts();
   }
 
-  async replaceArtifact(item?: RaceHubItem): Promise<void> {
+  async replaceArtifact(item?: BotRacersItem): Promise<void> {
     const node = item?.node;
     if (!node || node.kind !== 'remoteArtifact') {
       return;
@@ -294,7 +294,7 @@ export class RaceHubViewProvider implements vscode.TreeDataProvider<RaceHubItem>
     await this.refreshArtifacts();
   }
 
-  async deleteArtifact(item?: RaceHubItem): Promise<void> {
+  async deleteArtifact(item?: BotRacersItem): Promise<void> {
     const node = item?.node;
     if (!node || node.kind !== 'remoteArtifact') {
       return;
@@ -320,7 +320,7 @@ export class RaceHubViewProvider implements vscode.TreeDataProvider<RaceHubItem>
     await this.refreshArtifacts();
   }
 
-  async toggleVisibility(item?: RaceHubItem): Promise<void> {
+  async toggleVisibility(item?: BotRacersItem): Promise<void> {
     const node = item?.node;
     if (!node || node.kind !== 'remoteArtifact') {
       return;

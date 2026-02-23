@@ -21,7 +21,7 @@ COPY --from=planner /app/recipe.json recipe.json
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/app/target \
-    cargo chef cook --release --recipe-path recipe.json -p racehub
+    cargo chef cook --release --recipe-path recipe.json -p botracers-server
 
 COPY . .
 RUN mkdir -p /out
@@ -29,9 +29,9 @@ RUN mkdir -p /out
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=/usr/local/cargo/git \
     --mount=type=cache,target=/app/target \
-    cargo build -p racehub --release --locked \
+    cargo build -p botracers-server --release --locked \
     && ./scripts/build_web.sh --release \
-    && cp /app/target/release/racehub /out/racehub
+    && cp /app/target/release/botracers-server /out/botracers-server
 
 FROM debian:bookworm-slim AS runtime
 WORKDIR /app
@@ -39,21 +39,21 @@ WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
-    && groupadd --gid 10001 racehub \
-    && useradd --uid 10001 --gid racehub --home /app --shell /usr/sbin/nologin racehub \
-    && mkdir -p /data/racehub_artifacts /opt/racehub \
-    && chown -R racehub:racehub /data /opt/racehub
+    && groupadd --gid 10001 botracers \
+    && useradd --uid 10001 --gid botracers --home /app --shell /usr/sbin/nologin botracers \
+    && mkdir -p /data/botracers_artifacts /opt/botracers \
+    && chown -R botracers:botracers /data /opt/botracers
 
-COPY --from=builder /out/racehub /usr/local/bin/racehub
-COPY --from=builder /app/web-dist /opt/racehub/web-dist
+COPY --from=builder /out/botracers-server /usr/local/bin/botracers-server
+COPY --from=builder /app/web-dist /opt/botracers/web-dist
 
-ENV RACEHUB_BIND=0.0.0.0:8787
-ENV RACEHUB_DB_PATH=/data/racehub.db
-ENV RACEHUB_ARTIFACTS_DIR=/data/racehub_artifacts
-ENV RACEHUB_STATIC_DIR=/opt/racehub/web-dist
+ENV BOTRACERS_BIND=0.0.0.0:8787
+ENV BOTRACERS_DB_PATH=/data/botracers.db
+ENV BOTRACERS_ARTIFACTS_DIR=/data/botracers_artifacts
+ENV BOTRACERS_STATIC_DIR=/opt/botracers/web-dist
 ENV RUST_LOG=info
 
 EXPOSE 8787
 
-USER racehub
-ENTRYPOINT ["/usr/local/bin/racehub"]
+USER botracers
+ENTRYPOINT ["/usr/local/bin/botracers-server"]

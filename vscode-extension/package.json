@@ -1,9 +1,9 @@
 {
-  "name": "programming-game-racehub",
-  "displayName": "Programming Game RaceHub",
-  "description": "Integrated RaceHub workflow for bot build, upload, and artifact management",
+  "name": "botracers",
+  "displayName": "BotRacers",
+  "description": "Integrated BotRacers workflow for bot build, upload, and artifact management",
   "version": "0.1.0",
-  "publisher": "programming-game",
+  "publisher": "botracers",
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -13,196 +13,196 @@
   "contributes": {
     "commands": [
       {
-        "command": "racehub.configureServer",
+        "command": "botracers.configureServer",
         "title": "Configure Server URL",
-        "category": "RaceHub",
+        "category": "BotRacers",
         "icon": "$(gear)"
       },
       {
-        "command": "racehub.login",
+        "command": "botracers.login",
         "title": "Login",
-        "category": "RaceHub"
+        "category": "BotRacers"
       },
       {
-        "command": "racehub.initializeBotProject",
+        "command": "botracers.initializeBotProject",
         "title": "Initialize Bot Project",
-        "category": "RaceHub"
+        "category": "BotRacers"
       },
       {
-        "command": "racehub.openBotProject",
+        "command": "botracers.openBotProject",
         "title": "Open Bot Project",
-        "category": "RaceHub"
+        "category": "BotRacers"
       },
       {
-        "command": "racehub.view.refresh",
+        "command": "botracers.view.refresh",
         "title": "Refresh",
-        "category": "RaceHub",
+        "category": "BotRacers",
         "icon": "$(refresh)"
       },
       {
-        "command": "racehub.view.buildAndUpload",
+        "command": "botracers.view.buildAndUpload",
         "title": "Build & Upload",
-        "category": "RaceHub",
+        "category": "BotRacers",
         "icon": "$(cloud-upload)"
       },
       {
-        "command": "racehub.view.buildBinary",
+        "command": "botracers.view.buildBinary",
         "title": "Build Binary",
-        "category": "RaceHub",
+        "category": "BotRacers",
         "icon": "$(chip)"
       },
       {
-        "command": "racehub.view.revealElfPath",
+        "command": "botracers.view.revealElfPath",
         "title": "Reveal ELF Path",
-        "category": "RaceHub",
+        "category": "BotRacers",
         "icon": "$(folder-opened)"
       },
       {
-        "command": "racehub.view.replaceArtifact",
+        "command": "botracers.view.replaceArtifact",
         "title": "Replace Artifact",
-        "category": "RaceHub",
+        "category": "BotRacers",
         "icon": "$(replace)"
       },
       {
-        "command": "racehub.view.deleteArtifact",
+        "command": "botracers.view.deleteArtifact",
         "title": "Delete Artifact",
-        "category": "RaceHub",
+        "category": "BotRacers",
         "icon": "$(trash)"
       },
       {
-        "command": "racehub.view.toggleVisibility",
+        "command": "botracers.view.toggleVisibility",
         "title": "Toggle Artifact Visibility",
-        "category": "RaceHub",
+        "category": "BotRacers",
         "icon": "$(eye)"
       }
     ],
     "views": {
       "explorer": [
         {
-          "id": "racehub.explorer",
-          "name": "RaceHub",
-          "icon": "media/racehub.svg"
+          "id": "botracers.explorer",
+          "name": "BotRacers",
+          "icon": "media/botracers.svg"
         }
       ]
     },
     "viewsWelcome": [
       {
-        "view": "racehub.explorer",
-        "contents": "Sign in to RaceHub to manage artifacts.\n[Login](command:racehub.login)\n[Configure Server URL](command:racehub.configureServer)",
-        "when": "racehub.state == loggedOut && racehub.stateDetail == notLoggedIn"
+        "view": "botracers.explorer",
+        "contents": "Sign in to BotRacers to manage artifacts.\n[Login](command:botracers.login)\n[Configure Server URL](command:botracers.configureServer)",
+        "when": "botracers.state == loggedOut && botracers.stateDetail == notLoggedIn"
       },
       {
-        "view": "racehub.explorer",
-        "contents": "Session expired. Sign in again.\n[Login](command:racehub.login)\n[Configure Server URL](command:racehub.configureServer)",
-        "when": "racehub.state == loggedOut && racehub.stateDetail == sessionExpired"
+        "view": "botracers.explorer",
+        "contents": "Session expired. Sign in again.\n[Login](command:botracers.login)\n[Configure Server URL](command:botracers.configureServer)",
+        "when": "botracers.state == loggedOut && botracers.stateDetail == sessionExpired"
       },
       {
-        "view": "racehub.explorer",
-        "contents": "Could not reach RaceHub. Check server profile and retry.\n[Configure Server URL](command:racehub.configureServer)\n[Refresh](command:racehub.view.refresh)",
-        "when": "racehub.state == loggedOut && racehub.stateDetail == requestError"
+        "view": "botracers.explorer",
+        "contents": "Could not reach BotRacers. Check server profile and retry.\n[Configure Server URL](command:botracers.configureServer)\n[Refresh](command:botracers.view.refresh)",
+        "when": "botracers.state == loggedOut && botracers.stateDetail == requestError"
       },
       {
-        "view": "racehub.explorer",
-        "contents": "Open or initialize a bot workspace to continue.\n[Initialize Bot Project](command:racehub.initializeBotProject)\n[Open Bot Project](command:racehub.openBotProject)",
-        "when": "racehub.state == needsWorkspace && racehub.stateDetail == workspaceMissing"
+        "view": "botracers.explorer",
+        "contents": "Open or initialize a bot workspace to continue.\n[Initialize Bot Project](command:botracers.initializeBotProject)\n[Open Bot Project](command:botracers.openBotProject)",
+        "when": "botracers.state == needsWorkspace && botracers.stateDetail == workspaceMissing"
       },
       {
-        "view": "racehub.explorer",
-        "contents": "Workspace found, but no Rust binaries were discovered.\n[Initialize Bot Project](command:racehub.initializeBotProject)\n[Open Bot Project](command:racehub.openBotProject)\n[Refresh](command:racehub.view.refresh)",
-        "when": "racehub.state == needsWorkspace && racehub.stateDetail == noBinaries"
+        "view": "botracers.explorer",
+        "contents": "Workspace found, but no Rust binaries were discovered.\n[Initialize Bot Project](command:botracers.initializeBotProject)\n[Open Bot Project](command:botracers.openBotProject)\n[Refresh](command:botracers.view.refresh)",
+        "when": "botracers.state == needsWorkspace && botracers.stateDetail == noBinaries"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "racehub.view.refresh",
-          "when": "view == racehub.explorer",
+          "command": "botracers.view.refresh",
+          "when": "view == botracers.explorer",
           "group": "navigation@1"
         },
         {
-          "command": "racehub.configureServer",
-          "when": "view == racehub.explorer",
+          "command": "botracers.configureServer",
+          "when": "view == botracers.explorer",
           "group": "navigation@2"
         }
       ],
       "view/item/context": [
         {
-          "command": "racehub.view.buildAndUpload",
-          "when": "view == racehub.explorer && viewItem == localBin",
+          "command": "botracers.view.buildAndUpload",
+          "when": "view == botracers.explorer && viewItem == localBin",
           "group": "inline@1"
         },
         {
-          "command": "racehub.view.buildBinary",
-          "when": "view == racehub.explorer && viewItem == localBin",
+          "command": "botracers.view.buildBinary",
+          "when": "view == botracers.explorer && viewItem == localBin",
           "group": "inline@2"
         },
         {
-          "command": "racehub.view.revealElfPath",
-          "when": "view == racehub.explorer && viewItem == localBin",
+          "command": "botracers.view.revealElfPath",
+          "when": "view == botracers.explorer && viewItem == localBin",
           "group": "inline@3"
         },
         {
-          "command": "racehub.view.buildBinary",
-          "when": "view == racehub.explorer && viewItem == localBin",
+          "command": "botracers.view.buildBinary",
+          "when": "view == botracers.explorer && viewItem == localBin",
           "group": "navigation@1"
         },
         {
-          "command": "racehub.view.revealElfPath",
-          "when": "view == racehub.explorer && viewItem == localBin",
+          "command": "botracers.view.revealElfPath",
+          "when": "view == botracers.explorer && viewItem == localBin",
           "group": "navigation@2"
         },
         {
-          "command": "racehub.view.replaceArtifact",
-          "when": "view == racehub.explorer && viewItem == remoteArtifactOwned",
+          "command": "botracers.view.replaceArtifact",
+          "when": "view == botracers.explorer && viewItem == remoteArtifactOwned",
           "group": "inline@1"
         },
         {
-          "command": "racehub.view.replaceArtifact",
-          "when": "view == racehub.explorer && viewItem == remoteArtifactOwned",
+          "command": "botracers.view.replaceArtifact",
+          "when": "view == botracers.explorer && viewItem == remoteArtifactOwned",
           "group": "navigation@0"
         },
         {
-          "command": "racehub.view.toggleVisibility",
-          "when": "view == racehub.explorer && viewItem == remoteArtifactOwned",
+          "command": "botracers.view.toggleVisibility",
+          "when": "view == botracers.explorer && viewItem == remoteArtifactOwned",
           "group": "inline@2"
         },
         {
-          "command": "racehub.view.deleteArtifact",
-          "when": "view == racehub.explorer && viewItem == remoteArtifactOwned",
+          "command": "botracers.view.deleteArtifact",
+          "when": "view == botracers.explorer && viewItem == remoteArtifactOwned",
           "group": "inline@3"
         },
         {
-          "command": "racehub.view.toggleVisibility",
-          "when": "view == racehub.explorer && viewItem == remoteArtifactOwned",
+          "command": "botracers.view.toggleVisibility",
+          "when": "view == botracers.explorer && viewItem == remoteArtifactOwned",
           "group": "navigation@1"
         },
         {
-          "command": "racehub.view.deleteArtifact",
-          "when": "view == racehub.explorer && viewItem == remoteArtifactOwned",
+          "command": "botracers.view.deleteArtifact",
+          "when": "view == botracers.explorer && viewItem == remoteArtifactOwned",
           "group": "navigation@2"
         }
       ]
     },
     "configuration": {
-      "title": "RaceHub",
+      "title": "BotRacers",
       "properties": {
-        "racehub.serverProfile": {
+        "botracers.serverProfile": {
           "type": "string",
           "enum": ["production", "localhost", "custom"],
           "default": "production",
-          "description": "Server profile used by RaceHub extension requests"
+          "description": "Server profile used by BotRacers extension requests"
         },
-        "racehub.customServerUrl": {
+        "botracers.customServerUrl": {
           "type": "string",
           "default": "",
-          "description": "Custom RaceHub URL used when serverProfile is custom"
+          "description": "Custom BotRacers URL used when serverProfile is custom"
         },
-        "racehub.defaultArtifactTarget": {
+        "botracers.defaultArtifactTarget": {
           "type": "string",
           "default": "riscv32imafc-unknown-none-elf",
           "description": "Default Rust target triple for build and upload"
         },
-        "racehub.botWorkspacePath": {
+        "botracers.botWorkspacePath": {
           "type": "string",
           "default": "",
           "description": "Optional absolute/relative path to bot workspace root when it differs from the open folder"

@@ -1884,6 +1884,61 @@ dependencies = [
 ]
 
 [[package]]
+name = "botracers-bot-sdk"
+version = "0.1.0"
+dependencies = [
+ "bevy_math",
+]
+
+[[package]]
+name = "botracers-game"
+version = "0.1.0"
+dependencies = [
+ "avian2d",
+ "base64",
+ "bevy",
+ "botracers-protocol",
+ "botracers-server",
+ "ehttp",
+ "emulator",
+ "rfd",
+ "serde",
+ "serde_json",
+ "tokio",
+ "toml",
+ "wasm-bindgen-futures",
+]
+
+[[package]]
+name = "botracers-protocol"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "botracers-server"
+version = "0.1.0"
+dependencies = [
+ "argon2",
+ "axum",
+ "base64",
+ "botracers-protocol",
+ "chrono",
+ "hex",
+ "rand",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "urlencoding",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4785,61 +4840,6 @@ name = "r-efi"
 version = "5.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "74765f6d916ee2faa39bc8e68e4f3ed8949b48cccdac59983d287a7cb71ce9c5"
-
-[[package]]
-name = "race-protocol"
-version = "0.1.0"
-dependencies = [
- "serde",
-]
-
-[[package]]
-name = "racehub"
-version = "0.1.0"
-dependencies = [
- "argon2",
- "axum",
- "base64",
- "chrono",
- "hex",
- "race-protocol",
- "rand",
- "rusqlite",
- "serde",
- "serde_json",
- "tokio",
- "tower",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "urlencoding",
-]
-
-[[package]]
-name = "racehub-bot-sdk"
-version = "0.1.0"
-dependencies = [
- "bevy_math",
-]
-
-[[package]]
-name = "racing"
-version = "0.1.0"
-dependencies = [
- "avian2d",
- "base64",
- "bevy",
- "ehttp",
- "emulator",
- "race-protocol",
- "racehub",
- "rfd",
- "serde",
- "serde_json",
- "tokio",
- "toml",
- "wasm-bindgen-futures",
-]
 
 [[package]]
 name = "radsort"

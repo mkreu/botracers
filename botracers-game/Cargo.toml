@@ -1,14 +1,14 @@
 [package]
-name = "racing"
+name = "botracers-game"
 version = "0.1.0"
 edition = "2024"
 
 [[bin]]
-name = "racing"
+name = "botracers"
 path = "src/main.rs"
 
 [[bin]]
-name = "track-editor"
+name = "botracers-track-editor"
 path = "src/bin/editor.rs"
 
 [dependencies]
@@ -23,8 +23,8 @@ base64 = "0.22"
 wasm-bindgen-futures = "0.4"
 
 emulator = { path = "../emulator" }
-race-protocol = { path = "../race-protocol" }
+botracers-protocol = { path = "../botracers-protocol" }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { version = "1", features = ["rt-multi-thread"] }
-racehub = { path = "../racehub" }
+botracers-server = { path = "../botracers-server" }

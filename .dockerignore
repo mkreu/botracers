@@ -3,8 +3,8 @@
 .github
 target
 web-dist
-racehub.db
-racehub_artifacts
+botracers.db
+botracers_artifacts
 bot/target
 .DS_Store
 *.swp

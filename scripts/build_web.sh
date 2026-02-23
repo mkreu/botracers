@@ -25,10 +25,10 @@ if [[ "$PROFILE" == "release" ]]; then
   BUILD_FLAGS+=(--release)
 fi
 
-echo "Building racing wasm (${PROFILE})..."
-cargo build -p racing --bin racing --target wasm32-unknown-unknown "${BUILD_FLAGS[@]}"
+echo "Building BotRacers wasm (${PROFILE})..."
+cargo build -p botracers-game --bin botracers --target wasm32-unknown-unknown "${BUILD_FLAGS[@]}"
 
-WASM_PATH="target/wasm32-unknown-unknown/${PROFILE}/racing.wasm"
+WASM_PATH="target/wasm32-unknown-unknown/${PROFILE}/botracers.wasm"
 OUT_DIR="web-dist"
 mkdir -p "$OUT_DIR"
 
@@ -40,7 +40,7 @@ wasm-bindgen \
 
 echo "Copying game assets..."
 rm -rf "$OUT_DIR/assets"
-cp -R racing/assets "$OUT_DIR/assets"
+cp -R botracers-game/assets "$OUT_DIR/assets"
 
 if [[ ! -f "$OUT_DIR/index.html" ]]; then
   cat > "$OUT_DIR/index.html" <<'HTML'
@@ -49,7 +49,7 @@ if [[ ! -f "$OUT_DIR/index.html" ]]; then
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Programming Game</title>
+    <title>BotRacers</title>
     <style>
       html,
       body {
@@ -71,7 +71,7 @@ if [[ ! -f "$OUT_DIR/index.html" ]]; then
   </head>
   <body>
     <script type="module">
-      import init from './racing.js';
+      import init from './botracers.js';
       await init();
     </script>
   </body>

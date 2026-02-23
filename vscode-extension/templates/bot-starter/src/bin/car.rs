@@ -3,7 +3,7 @@
 
 use core::fmt::Write;
 
-use racehub_bot_sdk::{
+use botracers_bot_sdk::{
     driving::{CarControls, CarState},
     log, SLOT2, SLOT3,
 };

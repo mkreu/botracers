@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { loginRequest } from '../api';
 import { resolveServerUrl } from '../config';
 
-const TOKEN_KEY = 'racehub.token';
+const TOKEN_KEY = 'botracers.token';
 
 function html(serverUrl: string): string {
   const registerUrl = `${serverUrl}/register`;
@@ -27,7 +27,7 @@ function html(serverUrl: string): string {
 </head>
 <body>
   <div class="wrap">
-    <h2>RaceHub Login</h2>
+    <h2>BotRacers Login</h2>
     <div class="meta">Server: <code>${serverUrl}</code></div>
     <div class="field">
       <label for="username">Username</label>
@@ -77,7 +77,7 @@ function html(serverUrl: string): string {
 
 export async function openLoginWebview(context: vscode.ExtensionContext): Promise<boolean> {
   const serverUrl = resolveServerUrl();
-  const panel = vscode.window.createWebviewPanel('racehub.login', 'RaceHub Login', vscode.ViewColumn.Active, {
+  const panel = vscode.window.createWebviewPanel('botracers.login', 'BotRacers Login', vscode.ViewColumn.Active, {
     enableScripts: true
   });
 
@@ -99,7 +99,7 @@ export async function openLoginWebview(context: vscode.ExtensionContext): Promis
       try {
         const resp = await loginRequest(username, password);
         await context.secrets.store(TOKEN_KEY, resp.token);
-        void vscode.window.showInformationMessage(`RaceHub login successful as ${resp.user.username}`);
+        void vscode.window.showInformationMessage(`BotRacers login successful as ${resp.user.username}`);
         panel.dispose();
         resolve(true);
       } catch (error) {

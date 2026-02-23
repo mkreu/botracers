@@ -3,7 +3,7 @@ import * as vscode from 'vscode';
 import { initializeBotProject, openBotProject } from './bootstrap';
 import { loginViaWebview } from './auth';
 import { configureServerProfile } from './config';
-import { RaceHubItem, RaceHubViewProvider } from './views/racehubView';
+import { BotRacersItem, BotRacersViewProvider } from './views/botracersView';
 
 function registerCommand(
   context: vscode.ExtensionContext,
@@ -22,11 +22,11 @@ function registerCommand(
 }
 
 export function activate(context: vscode.ExtensionContext): void {
-  const provider = new RaceHubViewProvider(context);
-  void vscode.commands.executeCommand('setContext', 'racehub.state', 'loggedOut');
-  void vscode.commands.executeCommand('setContext', 'racehub.stateDetail', 'notLoggedIn');
+  const provider = new BotRacersViewProvider(context);
+  void vscode.commands.executeCommand('setContext', 'botracers.state', 'loggedOut');
+  void vscode.commands.executeCommand('setContext', 'botracers.stateDetail', 'notLoggedIn');
 
-  const view = vscode.window.createTreeView('racehub.explorer', {
+  const view = vscode.window.createTreeView('botracers.explorer', {
     treeDataProvider: provider,
     showCollapseAll: true
   });
@@ -39,7 +39,7 @@ export function activate(context: vscode.ExtensionContext): void {
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(refresh),
     vscode.workspace.onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration('racehub')) {
+      if (event.affectsConfiguration('botracers')) {
         refresh();
       }
     })
@@ -58,52 +58,52 @@ export function activate(context: vscode.ExtensionContext): void {
     binWatcher.onDidDelete(refresh)
   );
 
-  registerCommand(context, 'racehub.configureServer', async () => {
+  registerCommand(context, 'botracers.configureServer', async () => {
     await configureServerProfile();
     await provider.refreshArtifacts();
   });
 
-  registerCommand(context, 'racehub.login', async () => {
+  registerCommand(context, 'botracers.login', async () => {
     const changed = await loginViaWebview(context);
     if (changed) {
       await provider.refreshArtifacts();
     }
   });
 
-  registerCommand(context, 'racehub.initializeBotProject', async () => {
+  registerCommand(context, 'botracers.initializeBotProject', async () => {
     await initializeBotProject(context);
     await provider.refreshArtifacts();
   });
 
-  registerCommand(context, 'racehub.openBotProject', async () => {
+  registerCommand(context, 'botracers.openBotProject', async () => {
     await openBotProject();
   });
 
-  registerCommand(context, 'racehub.view.refresh', async () => {
+  registerCommand(context, 'botracers.view.refresh', async () => {
     await provider.refreshArtifacts();
   });
 
-  registerCommand(context, 'racehub.view.buildAndUpload', async (item?: RaceHubItem) => {
+  registerCommand(context, 'botracers.view.buildAndUpload', async (item?: BotRacersItem) => {
     await provider.buildAndUploadBinary(item);
   });
 
-  registerCommand(context, 'racehub.view.buildBinary', async (item?: RaceHubItem) => {
+  registerCommand(context, 'botracers.view.buildBinary', async (item?: BotRacersItem) => {
     await provider.buildBinaryItem(item);
   });
 
-  registerCommand(context, 'racehub.view.revealElfPath', async (item?: RaceHubItem) => {
+  registerCommand(context, 'botracers.view.revealElfPath', async (item?: BotRacersItem) => {
     await provider.revealElfPath(item);
   });
 
-  registerCommand(context, 'racehub.view.replaceArtifact', async (item?: RaceHubItem) => {
+  registerCommand(context, 'botracers.view.replaceArtifact', async (item?: BotRacersItem) => {
     await provider.replaceArtifact(item);
   });
 
-  registerCommand(context, 'racehub.view.deleteArtifact', async (item?: RaceHubItem) => {
+  registerCommand(context, 'botracers.view.deleteArtifact', async (item?: BotRacersItem) => {
     await provider.deleteArtifact(item);
   });
 
-  registerCommand(context, 'racehub.view.toggleVisibility', async (item?: RaceHubItem) => {
+  registerCommand(context, 'botracers.view.toggleVisibility', async (item?: BotRacersItem) => {
     await provider.toggleVisibility(item);
   });
 

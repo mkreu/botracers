@@ -7,12 +7,12 @@ export const DEFAULT_TARGET_TRIPLE = 'riscv32imafc-unknown-none-elf';
 export type ServerProfile = 'production' | 'localhost' | 'custom';
 
 export function defaultArtifactTarget(): string {
-  const cfg = vscode.workspace.getConfiguration('racehub');
+  const cfg = vscode.workspace.getConfiguration('botracers');
   return cfg.get<string>('defaultArtifactTarget') ?? DEFAULT_TARGET_TRIPLE;
 }
 
 export function configuredBotWorkspacePath(): string | undefined {
-  const cfg = vscode.workspace.getConfiguration('racehub');
+  const cfg = vscode.workspace.getConfiguration('botracers');
   const value = cfg.get<string>('botWorkspacePath');
   if (!value) {
     return undefined;
@@ -22,7 +22,7 @@ export function configuredBotWorkspacePath(): string | undefined {
 }
 
 export function getServerProfile(): ServerProfile {
-  const cfg = vscode.workspace.getConfiguration('racehub');
+  const cfg = vscode.workspace.getConfiguration('botracers');
   const profile = cfg.get<string>('serverProfile') ?? 'production';
   if (profile === 'localhost' || profile === 'custom' || profile === 'production') {
     return profile;
@@ -31,7 +31,7 @@ export function getServerProfile(): ServerProfile {
 }
 
 export function getCustomServerUrl(): string {
-  const cfg = vscode.workspace.getConfiguration('racehub');
+  const cfg = vscode.workspace.getConfiguration('botracers');
   return (cfg.get<string>('customServerUrl') ?? '').trim();
 }
 
@@ -46,23 +46,23 @@ export function resolveServerUrl(): string {
 
   const custom = getCustomServerUrl();
   if (custom.length === 0) {
-    throw new Error('Custom server profile is selected, but racehub.customServerUrl is empty.');
+    throw new Error('Custom server profile is selected, but botracers.customServerUrl is empty.');
   }
 
   try {
     const parsed = new URL(custom);
     return parsed.toString().replace(/\/$/, '');
   } catch {
-    throw new Error(`Invalid racehub.customServerUrl: '${custom}'`);
+    throw new Error(`Invalid botracers.customServerUrl: '${custom}'`);
   }
 }
 
 async function setServerProfile(profile: ServerProfile): Promise<void> {
-  await vscode.workspace.getConfiguration('racehub').update('serverProfile', profile, vscode.ConfigurationTarget.Global);
+  await vscode.workspace.getConfiguration('botracers').update('serverProfile', profile, vscode.ConfigurationTarget.Global);
 }
 
 async function setCustomServerUrl(url: string): Promise<void> {
-  await vscode.workspace.getConfiguration('racehub').update('customServerUrl', url, vscode.ConfigurationTarget.Global);
+  await vscode.workspace.getConfiguration('botracers').update('customServerUrl', url, vscode.ConfigurationTarget.Global);
 }
 
 export async function configureServerProfile(): Promise<void> {
@@ -80,12 +80,12 @@ export async function configureServerProfile(): Promise<void> {
       },
       {
         label: 'Custom...',
-        description: 'Enter a custom RaceHub URL',
+        description: 'Enter a custom BotRacers URL',
         profile: 'custom' as ServerProfile
       }
     ],
     {
-      title: 'Select RaceHub Server'
+      title: 'Select BotRacers Server'
     }
   );
 
@@ -96,7 +96,7 @@ export async function configureServerProfile(): Promise<void> {
   if (picked.profile === 'custom') {
     const current = getCustomServerUrl();
     const value = await vscode.window.showInputBox({
-      title: 'Custom RaceHub URL',
+      title: 'Custom BotRacers URL',
       value: current,
       prompt: 'Example: https://racers.mlkr.eu'
     });
@@ -114,11 +114,11 @@ export async function configureServerProfile(): Promise<void> {
 
     await setCustomServerUrl(normalized);
     await setServerProfile('custom');
-    void vscode.window.showInformationMessage(`RaceHub server set to ${normalized}`);
+    void vscode.window.showInformationMessage(`BotRacers server set to ${normalized}`);
     return;
   }
 
   await setServerProfile(picked.profile);
   const effective = picked.profile === 'production' ? PRODUCTION_SERVER_URL : LOCALHOST_SERVER_URL;
-  void vscode.window.showInformationMessage(`RaceHub server set to ${effective}`);
+  void vscode.window.showInformationMessage(`BotRacers server set to ${effective}`);
 }

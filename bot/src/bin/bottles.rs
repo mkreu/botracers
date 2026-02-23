@@ -3,7 +3,7 @@
 
 use core::fmt::Write;
 
-use racehub_bot_sdk::log;
+use botracers_bot_sdk::log;
 
 #[unsafe(export_name = "main")]
 fn main() -> ! {

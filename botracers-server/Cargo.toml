@@ -1,10 +1,10 @@
 [package]
-name = "racehub"
+name = "botracers-server"
 version = "0.1.0"
 edition = "2024"
 
 [[bin]]
-name = "racehub"
+name = "botracers-server"
 path = "src/main.rs"
 
 [dependencies]
@@ -20,7 +20,7 @@ tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 argon2 = "0.5"
-race-protocol = { path = "../race-protocol" }
+botracers-protocol = { path = "../botracers-protocol" }
 urlencoding = "2"
 
 [dev-dependencies]

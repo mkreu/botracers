@@ -31,4 +31,4 @@ doctest = false
 bench = false
 
 [dependencies]
-racehub-bot-sdk = { path = "../racehub-bot-sdk" }
+botracers-bot-sdk = { path = "../botracers-bot-sdk" }
