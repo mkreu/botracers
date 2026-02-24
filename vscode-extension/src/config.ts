@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-export const PRODUCTION_SERVER_URL = 'https://racers.mlkr.eu';
+export const PRODUCTION_SERVER_URL = 'https://botrace.rs';
 export const LOCALHOST_SERVER_URL = 'http://127.0.0.1:8787';
 export const DEFAULT_TARGET_TRIPLE = 'riscv32imafc-unknown-none-elf';
 
@@ -98,7 +98,7 @@ export async function configureServerProfile(): Promise<void> {
     const value = await vscode.window.showInputBox({
       title: 'Custom BotRacers URL',
       value: current,
-      prompt: 'Example: https://racers.mlkr.eu'
+      prompt: 'Example: https://botrace.rs'
     });
 
     if (!value) {

@@ -184,7 +184,7 @@ Auth behavior:
 
 Server URL behavior:
 - Profile-based configuration only:
-  - `production` -> `https://racers.mlkr.eu` (default)
+  - `production` -> `https://botrace.rs` (default)
   - `localhost` -> `http://127.0.0.1:8787`
   - `custom` -> `botracers.customServerUrl`
 

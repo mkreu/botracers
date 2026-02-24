@@ -226,7 +226,7 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
   - `BotRacers: Initialize Bot Project`
   - `BotRacers: Open Bot Project`
 - Server URL is profile-only (no raw server URL setting):
-  - `production` -> `https://racers.mlkr.eu` (default)
+  - `production` -> `https://botrace.rs` (default)
   - `localhost` -> `http://127.0.0.1:8787`
   - `custom` -> `botracers.customServerUrl`
 - `BotRacers` tree view is contributed directly to the built-in Explorer sidebar with explicit states:

@@ -13,7 +13,7 @@ Integrated workflow for BotRacers onboarding, bot bootstrap, build/upload, and a
 
 The extension no longer uses a raw `serverUrl` setting.
 
-- `production` (default): `https://racers.mlkr.eu`
+- `production` (default): `https://botrace.rs`
 - `localhost`: `http://127.0.0.1:8787`
 - `custom`: uses `botracers.customServerUrl`
 
