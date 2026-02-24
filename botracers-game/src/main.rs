@@ -124,6 +124,55 @@ mod main_game {
         pub target: Option<Entity>,
     }
 
+    pub const FIXED_TICK_HZ: u32 = 200;
+    const CPU_FREQUENCY_PRESETS_HZ: [u32; 10] = [
+        1_000, 5_000, 10_000, 20_000, 50_000, 100_000, 200_000, 500_000, 1_000_000, 2_000_000,
+    ];
+
+    #[derive(Resource, Clone, Copy)]
+    pub struct CpuFrequencySetting {
+        preset_index: usize,
+    }
+
+    impl Default for CpuFrequencySetting {
+        fn default() -> Self {
+            Self {
+                preset_index: CPU_FREQUENCY_PRESETS_HZ.len() - 1,
+            }
+        }
+    }
+
+    impl CpuFrequencySetting {
+        pub fn hz(&self) -> u32 {
+            CPU_FREQUENCY_PRESETS_HZ[self.preset_index]
+        }
+
+        pub fn instructions_per_update(&self) -> u32 {
+            (self.hz() / FIXED_TICK_HZ).max(1)
+        }
+
+        pub fn step_up(&mut self) {
+            if self.preset_index + 1 < CPU_FREQUENCY_PRESETS_HZ.len() {
+                self.preset_index += 1;
+            }
+        }
+
+        pub fn step_down(&mut self) {
+            if self.preset_index > 0 {
+                self.preset_index -= 1;
+            }
+        }
+
+        pub fn format_hz_label(&self) -> String {
+            let hz = self.hz();
+            if hz >= 1_000_000 {
+                format!("{:.1} MHz", hz as f32 / 1_000_000.0)
+            } else {
+                format!("{} kHz", hz / 1_000)
+            }
+        }
+    }
+
     #[derive(Debug, Clone)]
     pub enum WebApiEvent {
         Capabilities(Result<ServerCapabilities, String>),
@@ -212,6 +261,51 @@ mod main_game {
         Cpu,
         PostCpu,
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::CpuFrequencySetting;
+
+        #[test]
+        fn cpu_frequency_setting_clamps_at_boundaries() {
+            let mut setting = CpuFrequencySetting::default();
+            setting.step_up();
+            assert_eq!(setting.hz(), 2_000_000);
+
+            for _ in 0..20 {
+                setting.step_down();
+            }
+            assert_eq!(setting.hz(), 1_000);
+
+            setting.step_down();
+            assert_eq!(setting.hz(), 1_000);
+        }
+
+        #[test]
+        fn cpu_frequency_setting_maps_to_instruction_budget() {
+            let setting = CpuFrequencySetting::default();
+            assert_eq!(setting.instructions_per_update(), 10_000);
+
+            let mut setting = CpuFrequencySetting::default();
+            for _ in 0..6 {
+                setting.step_down();
+            }
+            assert_eq!(setting.hz(), 20_000);
+            assert_eq!(setting.instructions_per_update(), 100);
+        }
+
+        #[test]
+        fn cpu_frequency_setting_formats_labels() {
+            let setting = CpuFrequencySetting::default();
+            assert_eq!(setting.format_hz_label(), "2.0 MHz");
+
+            let mut setting = CpuFrequencySetting::default();
+            for _ in 0..6 {
+                setting.step_down();
+            }
+            assert_eq!(setting.format_hz_label(), "20 kHz");
+        }
+    }
 }
 
 fn main() {
@@ -285,6 +379,7 @@ fn main() {
         .insert_resource(WebApiQueue::default())
         .insert_resource(RaceManager::default())
         .insert_resource(FollowCar::default())
+        .insert_resource(CpuFrequencySetting::default())
         .add_systems(
             Startup,
             (
@@ -307,6 +402,7 @@ fn main() {
                 process_web_api_events,
                 handle_spawn_car_event,
                 process_artifact_fetch_results,
+                apply_cpu_frequency_setting,
             ),
         )
         // Keyboard driving: always active (only affects non-AI, non-emulator cars)
@@ -1181,6 +1277,7 @@ fn process_artifact_fetch_results(
     track_spline: Res<track::TrackSpline>,
     mut manager: ResMut<RaceManager>,
     mut compile_pipeline: ResMut<ArtifactFetchPipeline>,
+    cpu_frequency: Res<CpuFrequencySetting>,
     state: Res<State<SimState>>,
 ) {
     let mut results = Vec::new();
@@ -1207,6 +1304,7 @@ fn process_artifact_fetch_results(
                     &asset_server,
                     &track_spline,
                     &mut manager,
+                    &cpu_frequency,
                     driver,
                     Some(elf_bytes),
                 );
@@ -1228,6 +1326,7 @@ fn spawn_car_entry(
     asset_server: &AssetServer,
     track_spline: &track::TrackSpline,
     manager: &mut RaceManager,
+    cpu_frequency: &CpuFrequencySetting,
     driver: DriverType,
     elf_bytes: Option<Vec<u8>>,
 ) {
@@ -1247,6 +1346,7 @@ fn spawn_car_entry(
         track_spline,
         &car_name,
         elf_bytes.as_deref(),
+        cpu_frequency.instructions_per_update(),
     );
     manager.cars.push(CarEntry {
         entity,
@@ -1264,6 +1364,7 @@ fn spawn_car(
     track_spline: &track::TrackSpline,
     name: &str,
     bot_elf: Option<&[u8]>,
+    instructions_per_update: u32,
 ) -> Entity {
     let sprite_scale = Vec3::splat(0.008);
 
@@ -1288,7 +1389,7 @@ fn spawn_car(
     let Some(bot_elf) = bot_elf else {
         panic!("Missing bot ELF bytes for emulator-driven car");
     };
-    let cpu = CpuComponent::new(bot_elf, 10000);
+    let cpu = CpuComponent::new(bot_elf, instructions_per_update);
     entity.insert((
         EmulatorDriver,
         cpu,
@@ -1346,6 +1447,20 @@ fn spawn_car(
     });
 
     entity_id
+}
+
+fn apply_cpu_frequency_setting(
+    cpu_frequency: Res<CpuFrequencySetting>,
+    mut cpu_query: Query<&mut CpuComponent>,
+) {
+    if !cpu_frequency.is_changed() {
+        return;
+    }
+
+    let instructions_per_update = cpu_frequency.instructions_per_update();
+    for mut cpu in &mut cpu_query {
+        cpu.set_instructions_per_update(instructions_per_update);
+    }
 }
 
 #[derive(Component)]

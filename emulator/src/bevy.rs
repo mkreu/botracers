@@ -106,6 +106,14 @@ impl CpuComponent {
             instructions_per_update,
         }
     }
+
+    pub fn instructions_per_update(&self) -> u32 {
+        self.instructions_per_update
+    }
+
+    pub fn set_instructions_per_update(&mut self, value: u32) {
+        self.instructions_per_update = value.max(1);
+    }
 }
 
 fn run_one_instruction(cpu: &mut CpuComponent, device_refs: &mut [&mut dyn Device]) {

@@ -1,7 +1,8 @@
 use bevy::prelude::*;
 
 use crate::main_game::{
-    CarLabel, DebugGizmos, DriverType, FollowCar, RaceManager, SimState, SpawnCarRequest,
+    CarLabel, CpuFrequencySetting, DebugGizmos, DriverType, FollowCar, RaceManager, SimState,
+    SpawnCarRequest,
     WebApiCommand, WebPortalState,
 };
 
@@ -28,9 +29,11 @@ impl Plugin for RaceUiPlugin {
                 Update,
                 (
                     handle_follow_car_button,
+                    handle_cpu_frequency_buttons,
                     handle_start_button,
                     handle_reset_button,
                     update_console_output,
+                    update_cpu_frequency_text,
                     update_start_button_text,
                 ),
             );
@@ -55,6 +58,12 @@ struct SpawnArtifactButton(i64);
 struct DeleteArtifactButton(i64);
 #[derive(Component)]
 struct ToggleArtifactVisibilityButton(i64, bool);
+#[derive(Component)]
+struct CpuFrequencyMinusButton;
+#[derive(Component)]
+struct CpuFrequencyPlusButton;
+#[derive(Component)]
+struct CpuFrequencyText;
 #[derive(Component)]
 struct StartButton;
 #[derive(Component)]
@@ -102,7 +111,7 @@ fn button_style() -> Node {
     }
 }
 
-fn setup_ui(mut commands: Commands) {
+fn setup_ui(mut commands: Commands, cpu_frequency: Res<CpuFrequencySetting>) {
     commands
         .spawn((
             UiRoot,
@@ -198,6 +207,42 @@ fn setup_ui(mut commands: Commands) {
                 .with_children(|_| {});
 
             panel.spawn((Text::new("Race"), text_font(16.0), TextColor(LABEL_COLOR)));
+
+            panel
+                .spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Center,
+                    column_gap: px(6.0),
+                    ..default()
+                })
+                .with_children(|row| {
+                    row.spawn((
+                        Button,
+                        CpuFrequencyMinusButton,
+                        button_style(),
+                        BackgroundColor(BTN_BG),
+                    ))
+                    .with_children(|btn| {
+                        btn.spawn((Text::new("-"), text_font(16.0), TextColor(TEXT_COLOR)));
+                    });
+
+                    row.spawn((
+                        Text::new(format!("CPU: {}", cpu_frequency.format_hz_label())),
+                        CpuFrequencyText,
+                        text_font(14.0),
+                        TextColor(TEXT_COLOR),
+                    ));
+
+                    row.spawn((
+                        Button,
+                        CpuFrequencyPlusButton,
+                        button_style(),
+                        BackgroundColor(BTN_BG),
+                    ))
+                    .with_children(|btn| {
+                        btn.spawn((Text::new("+"), text_font(16.0), TextColor(TEXT_COLOR)));
+                    });
+                });
 
             panel
                 .spawn(Node {
@@ -563,6 +608,37 @@ fn handle_follow_car_button(
                 follow.target = Some(follow_btn.0);
             }
         }
+    }
+}
+
+fn handle_cpu_frequency_buttons(
+    minus_query: Query<&Interaction, (Changed<Interaction>, With<CpuFrequencyMinusButton>)>,
+    plus_query: Query<&Interaction, (Changed<Interaction>, With<CpuFrequencyPlusButton>)>,
+    mut cpu_frequency: ResMut<CpuFrequencySetting>,
+) {
+    for interaction in &minus_query {
+        if *interaction == Interaction::Pressed {
+            cpu_frequency.step_down();
+        }
+    }
+
+    for interaction in &plus_query {
+        if *interaction == Interaction::Pressed {
+            cpu_frequency.step_up();
+        }
+    }
+}
+
+fn update_cpu_frequency_text(
+    cpu_frequency: Res<CpuFrequencySetting>,
+    mut text_query: Query<&mut Text, With<CpuFrequencyText>>,
+) {
+    if !cpu_frequency.is_changed() {
+        return;
+    }
+
+    for mut text in &mut text_query {
+        text.0 = format!("CPU: {}", cpu_frequency.format_hz_label());
     }
 }
 

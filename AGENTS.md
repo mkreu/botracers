@@ -248,7 +248,7 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
 ### `botracers-game/` — The Game
 
 - **`main.rs`** — Bevy app setup, game state management (`SimState`), event-based car spawning, physics, free camera with follow-on-select, two AI systems
-- **`ui.rs`** — `RaceUiPlugin`: right-side panel with persistent server status dialog, refresh/upload artifact buttons, artifact list with owner + visibility labels and per-artifact actions (spawn for all visible artifacts, delete/visibility toggle for owned artifacts), start/pause/reset, spawned-car controls (follow/gizmos/remove), and console output.
+- **`ui.rs`** — `RaceUiPlugin`: right-side panel with persistent server status dialog, refresh/upload artifact buttons, artifact list with owner + visibility labels and per-artifact actions (spawn for all visible artifacts, delete/visibility toggle for owned artifacts), global CPU frequency stepper (`-` / `+` presets in Hz), start/pause/reset, spawned-car controls (follow/gizmos/remove), and console output.
 - **`devices.rs`** — `CarStateDevice`, `CarControlsDevice`, `SplineDevice`, `TrackRadarDevice`, and `CarRadarDevice` implementing `Device` (host-side counterparts to the bot's volatile pointers and their uptate systems for bevy logic)
 - **`track.rs`** — `TrackSpline` resource, spline construction, track/kerb mesh generation
 - **`track_format.rs`** — TOML-based track file format (`TrackFile`)
@@ -277,6 +277,7 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
 **Key resources:**
 - `RaceManager` — tracks all spawned cars (`Vec<CarEntry>`), next car ID, and per-car console output
 - `FollowCar` — optional entity to follow with the camera
+- `CpuFrequencySetting` — global emulator CPU preset selector (`1k`..`2M` Hz); maps to `instructions_per_update = hz / 200`
 - `SimState` — state machine: `PreRace` (add/remove cars) → `Racing` (simulation active) → `Paused` (toggle)
 
 **Key messages (Bevy 0.18 `Message` trait, not `Event`):**
@@ -311,7 +312,7 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
 
 4. **Driver source is artifact-only** — Cars are spawned from artifacts served by `botracers-server`; local runtime bot compilation/discovery is intentionally removed from `botracers-game`.
 
-5. **Instruction budget matters** — The `instructions_per_update` value (currently 10000) must be high enough for each bot loop iteration to make progress, but low enough to avoid burning host CPU.
+5. **Instruction budget matters** — The `instructions_per_update` value is derived from a global UI preset (`hz / 200`, default `2 MHz => 10000`) and must be high enough for each bot loop iteration to make progress, but low enough to avoid burning host CPU.
 
 6. **Spline logic is bot-side** — The bot implements full autonomous navigation (window search, dynamic lookahead, spline walking, curvature-based braking) using the `SplineDevice` query interface. The engine only provides basic physics state; all pathfinding intelligence runs in emulated RISC-V code.
 
@@ -327,6 +328,6 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
 - **Embedded standalone startup race** — Initial capability fetch can fail if embedded `botracers-server` has not yet bound; retry from the UI.
 - **Device index vs slot address** — Device index 0 = address 0x100, index 1 = 0x200, etc. Off-by-one errors here will silently read zeros or fail.
 - **Mmu passes offsets, not absolute addresses** — If you implement a new device, your `load`/`store` will receive `addr & 0xFF`, not the full address.
-- **`instructions_per_update` tuning** — Too low and the bot can't complete a loop iteration per tick. Too high and it burns CPU time.
+- **`instructions_per_update` tuning** — Too low and the bot can't complete a loop iteration per tick. Too high and it burns CPU time. UI frequency presets update all existing emulator cars immediately and are also used for newly spawned cars.
 - **Bump allocator in SDK defaults** — `botracers-bot-sdk` default features provide a 4 KiB bump allocator that never frees. Allocating in a loop will eventually OOM. Current bot code doesn't allocate in its hot loop, but be careful adding features that do.
 - **Compressed immediates are easy to misdecode** — For `C.ADDI/C.LI/C.LUI/C.ANDI`, immediate sign comes from `inst[12]` mapped to imm bit 5. Missing that sign bit causes silent control-flow/data corruption.
