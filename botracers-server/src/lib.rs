@@ -16,12 +16,12 @@ use axum::{
     routing::{get, patch, post},
 };
 use base64::Engine;
-use chrono::Utc;
 use botracers_protocol::{
     ArtifactSummary, ErrorResponse, LoginRequest, LoginResponse, RegisterRequest,
     ServerCapabilities, UpdateArtifactVisibilityRequest, UploadArtifactRequest,
     UploadArtifactResponse, UserInfo,
 };
+use chrono::Utc;
 use rand::Rng;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::Deserialize;

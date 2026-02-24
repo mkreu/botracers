@@ -1,42 +1,48 @@
 use bevy::prelude::*;
 
-use crate::main_game::{
-    CarLabel, CpuFrequencySetting, DebugGizmos, DriverType, FollowCar, RaceManager, SimState,
-    SpawnCarRequest,
-    WebApiCommand, WebPortalState,
+use crate::bootstrap::WebPortalState;
+use crate::game_api::{DriverType, SpawnCarRequest, WebApiCommand};
+use crate::race_runtime::{
+    CarLabel, CpuFrequencySetting, DebugGizmos, FollowCar, RaceManager, SimState,
 };
 
-pub struct RaceUiPlugin;
+pub struct BootstrapUiPlugin;
 
-impl Plugin for RaceUiPlugin {
+impl Plugin for BootstrapUiPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(Startup, setup_ui)
-            .add_systems(
-                Update,
-                (
-                    handle_web_buttons,
-                    update_web_status_dialog,
-                    update_artifact_list_ui,
-                    handle_artifact_spawn_button,
-                    handle_artifact_delete_button,
-                    handle_artifact_visibility_button,
-                    update_car_list_ui,
-                    handle_remove_car_button,
-                    handle_toggle_gizmos_button,
-                ),
-            )
-            .add_systems(
-                Update,
-                (
-                    handle_follow_car_button,
-                    handle_cpu_frequency_buttons,
-                    handle_start_button,
-                    handle_reset_button,
-                    update_console_output,
-                    update_cpu_frequency_text,
-                    update_start_button_text,
-                ),
-            );
+        app.add_systems(Startup, setup_ui).add_systems(
+            Update,
+            (
+                handle_web_buttons,
+                update_web_status_dialog,
+                update_artifact_list_ui,
+                handle_artifact_spawn_button,
+                handle_artifact_delete_button,
+                handle_artifact_visibility_button,
+            ),
+        );
+    }
+}
+
+pub struct RaceRuntimeUiPlugin;
+
+impl Plugin for RaceRuntimeUiPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(
+            Update,
+            (
+                update_car_list_ui,
+                handle_remove_car_button,
+                handle_toggle_gizmos_button,
+                handle_follow_car_button,
+                handle_cpu_frequency_buttons,
+                handle_start_button,
+                handle_reset_button,
+                update_console_output,
+                update_cpu_frequency_text,
+                update_start_button_text,
+            ),
+        );
     }
 }
 

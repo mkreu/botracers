@@ -247,13 +247,18 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
 
 ### `botracers-game/` — The Game
 
-- **`main.rs`** — Bevy app setup, game state management (`SimState`), event-based car spawning, physics, free camera with follow-on-select, two AI systems
-- **`ui.rs`** — `RaceUiPlugin`: right-side panel with persistent server status dialog, refresh/upload artifact buttons, artifact list with owner + visibility labels and per-artifact actions (spawn for all visible artifacts, delete/visibility toggle for owned artifacts), global CPU frequency stepper (`-` / `+` presets in Hz), start/pause/reset, spawned-car controls (follow/gizmos/remove), and console output.
+- **`main.rs`** — Thin composition root: parses CLI (`--standalone`), inserts `BootstrapConfig`, and wires plugins (`GameApiPlugin`, `RaceRuntimePlugin`, `BootstrapPlugin`, `BootstrapUiPlugin`, `RaceRuntimeUiPlugin`)
+- **`game_api.rs`** — Shared in-game message contracts and driver model (`DriverType`, `SpawnCarRequest`, `SpawnResolvedCarRequest`, `WebApiCommand`) plus `GameApiPlugin` message registration
+- **`race_runtime.rs`** — `RaceRuntimePlugin`: simulation state (`SimState`), race resources (`RaceManager`, `FollowCar`, `CpuFrequencySetting`), track/camera/FPS setup, event-based resolved-car spawning, fixed-step emulator/device/physics execution, camera + gizmos + keyboard driving
+- **`bootstrap.rs`** — `BootstrapPlugin`: standalone embedded server startup, auth/capabilities/artifact web API flow, async artifact download pipeline, and `SpawnCarRequest -> SpawnResolvedCarRequest` translation
+- **`ui.rs`** — Split UI plugins:
+  - `BootstrapUiPlugin` (server status + artifact actions)
+  - `RaceRuntimeUiPlugin` (race controls + car list + console)
 - **`devices.rs`** — `CarStateDevice`, `CarControlsDevice`, `SplineDevice`, `TrackRadarDevice`, and `CarRadarDevice` implementing `Device` (host-side counterparts to the bot's volatile pointers and their uptate systems for bevy logic)
 - **`track.rs`** — `TrackSpline` resource, spline construction, track/kerb mesh generation
 - **`track_format.rs`** — TOML-based track file format (`TrackFile`)
 - **`bin/editor.rs`** — Track editor tool
-- Web API integration in `main.rs`/`ui.rs` now supports:
+- Web API integration in `bootstrap.rs`/`ui.rs` supports:
   - capability checks against `botracers-server`
   - native CLI credential prompt (non-wasm) and login when required
   - browser-cookie-based auth for wasm/web builds (no in-game login fields)
@@ -279,22 +284,36 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
 - `FollowCar` — optional entity to follow with the camera
 - `CpuFrequencySetting` — global emulator CPU preset selector (`1k`..`2M` Hz); maps to `instructions_per_update = hz / 200`
 - `SimState` — state machine: `PreRace` (add/remove cars) → `Racing` (simulation active) → `Paused` (toggle)
+- `WebPortalState` — server URL/auth/artifact list/status for web/bootstrap flow
+- `ArtifactFetchPipeline` — pending artifact download requests and async byte results
 
 **Key messages (Bevy 0.18 `Message` trait, not `Event`):**
-- `SpawnCarRequest { driver: DriverType }` — sent by artifact-row "Spawn" button, consumed by `handle_spawn_car_event`
+- `SpawnCarRequest { driver: DriverType }` — sent by artifact-row "Spawn" button, consumed by bootstrap download pipeline
+- `SpawnResolvedCarRequest { driver, elf_bytes, binary_name }` — emitted by bootstrap after download, consumed by race runtime spawner
+- `WebApiCommand` — UI->bootstrap commands for capability/artifact operations
 
 **System execution order:**
-1. `Update`: `handle_car_input` (keyboard → `Car`, excludes AI/emulator cars)
-2. `FixedUpdate` (in order, only in `Racing` state):
+1. `Startup`:
+    - bootstrap init (`initialize_bootstrap`, initial capability check)
+    - runtime scene init (`setup_track`, `setup`, default camera zoom)
+2. `Update`:
+    - bootstrap (`handle_web_api_commands`, `process_web_api_events`, artifact download queue, spawn-request translation)
+    - runtime (`handle_spawn_resolved_event`, `apply_cpu_frequency_setting`, `handle_car_input`)
+    - UI systems (bootstrap + race runtime panels), `update_camera`, `draw_gizmos`, `update_fps_counter`
+3. `FixedUpdate` (in order, only in `Racing` state):
     - `update_car_state_device` — writes physics state (position, velocity, forward direction) into `CarStateDevice` (**before** CPU execution system)
     - `update_track_radar_device` — updates `TrackRadarDevice` border ray distances (**before** CPU execution system)
     - `update_car_radar_device` — updates `CarRadarDevice` nearest-car absolute positions (**before** CPU execution system)
     - CPU execution system (`cpu_system::<YourCpuConfig>`) — runs N RISC-V instructions per tick; bot queries `SplineDevice` and computes controls
    - `apply_emulator_controls` — reads `CarControlsDevice` → `Car` (**after** CPU execution system)
    - `apply_car_forces` — applies `Car` state to physics forces
-3. `Update` (always): UI systems (car list rebuild, button handlers, console output drain), `update_camera`, `draw_gizmos`, `update_fps_counter`
 
-**Car spawning** — Event-driven via `SpawnCarRequest` message. The artifact list UI sends a `SpawnCarRequest` with a `DriverType`; `handle_spawn_car_event` creates the car entity with staggered grid positioning. Cars can only be added/removed in `PreRace` state. Each emulator car gets its own isolated CPU (`CpuComponent`) and isolated MMIO device components; each car has its own `SplineDevice` with a cloned copy of the track spline.
+**Car spawning** — Two-stage event flow:
+1. UI sends `SpawnCarRequest { driver: DriverType::RemoteArtifact { .. } }`.
+2. Bootstrap downloads ELF artifact and emits `SpawnResolvedCarRequest`.
+3. Runtime consumes resolved spawn and instantiates the car (PreRace-gated).
+
+Cars can only be added/removed in `PreRace` state. Each emulator car gets its own isolated CPU (`CpuComponent`) and isolated MMIO device components; each car has its own `SplineDevice` with a cloned copy of the track spline.
 
 **Camera** — Free camera by default (no cars spawned at startup). Middle/right-mouse drag to pan, scroll to zoom. When a car is selected via the UI "follow" button, the camera snaps to it; clicking again unfollows.
 
