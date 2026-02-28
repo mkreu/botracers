@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use emulator::cpu::Device;
 
-use crate::Car;
+use crate::race_runtime::car_dynamics::Car;
 
 /// Memory-mapped device exposing absolute positions of up to the 4 nearest cars.
 ///

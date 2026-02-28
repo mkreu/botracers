@@ -250,6 +250,7 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
 - **`main.rs`** — Thin composition root: parses CLI (`--standalone`), inserts `BootstrapConfig`, and wires plugins (`GameApiPlugin`, `RaceRuntimePlugin`, `BootstrapPlugin`, `BootstrapUiPlugin`, `RaceRuntimeUiPlugin`)
 - **`game_api.rs`** — Shared in-game message contracts and driver model (`DriverType`, `SpawnCarRequest`, `SpawnResolvedCarRequest`, `WebApiCommand`) plus `GameApiPlugin` message registration
 - **`race_runtime.rs`** — `RaceRuntimePlugin`: simulation state (`SimState`), race resources (`RaceManager`, `FollowCar`, `CpuFrequencySetting`), track/camera/FPS setup, event-based resolved-car spawning, fixed-step emulator/device/physics execution, longitudinal drivetrain model, camera + gizmos + keyboard driving
+- **`race_runtime/car_physics.rs`** — car physics domain module: `Car` component, drivetrain/lateral force calculations, wheel markers/constants, and longitudinal telemetry components/resources
 - **`bootstrap.rs`** — `BootstrapPlugin`: standalone embedded server startup, auth/capabilities/artifact web API flow, async artifact download pipeline, and `SpawnCarRequest -> SpawnResolvedCarRequest` translation
 - **`ui.rs`** — Split UI plugins:
   - `BootstrapUiPlugin` (server status + artifact actions)

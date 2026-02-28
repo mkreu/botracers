@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 use emulator::cpu::Device;
 
-use crate::Car;
+use crate::race_runtime::car_dynamics::Car;
 
 /// Memory-mapped device for car controls written by the RISC-V bot.
 ///
@@ -119,7 +119,7 @@ impl Device for CarControlsDevice {
 /// Runs AFTER cpu_system::<RacingCpuConfig>: reads control outputs and applies them.
 pub fn update_system(mut emu_query: Query<(&mut Car, &CarControlsDevice)>) {
     for (mut car, ctrl_dev) in &mut emu_query {
-        car.accelerator = ctrl_dev.accelerator();
+        car.throttle = ctrl_dev.accelerator();
         car.brake = ctrl_dev.brake();
         car.steer = ctrl_dev.steering();
     }

@@ -1,10 +1,6 @@
 use avian2d::prelude::*;
 use bevy::{diagnostic::FrameTimeDiagnosticsPlugin, prelude::*};
-
-mod bootstrap;
-mod game_api;
-mod race_runtime;
-mod ui;
+use botracers_game::{bootstrap, game_api, race_runtime, ui};
 
 fn main() {
     #[cfg(not(target_arch = "wasm32"))]
@@ -18,6 +14,8 @@ fn main() {
 
     #[cfg(not(target_arch = "wasm32"))]
     let bootstrap_config = if standalone_mode {
+        use botracers_game::bootstrap;
+
         let bind = std::env::var("BOTRACERS_STANDALONE_BIND")
             .unwrap_or_else(|_| "127.0.0.1:8787".to_string());
         bootstrap::BootstrapConfig {
@@ -44,6 +42,7 @@ fn main() {
             }),
             FrameTimeDiagnosticsPlugin::default(),
             PhysicsPlugins::default(),
+            PhysicsDebugPlugin,
             game_api::GameApiPlugin,
             race_runtime::RaceRuntimePlugin,
             bootstrap::BootstrapPlugin,

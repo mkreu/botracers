@@ -2,8 +2,9 @@ use bevy::prelude::*;
 
 use crate::bootstrap::WebPortalState;
 use crate::game_api::{DriverType, SpawnCarRequest, WebApiCommand};
+use crate::race_runtime::car_dynamics::CarTelemetry;
 use crate::race_runtime::{
-    CarLabel, CpuFrequencySetting, DebugGizmos, FollowCar, LongitudinalDebugData, RaceManager,
+    CarLabel, CpuFrequencySetting, DebugGizmos, FollowCar, RaceManager,
     SimState,
 };
 
@@ -784,7 +785,7 @@ fn update_car_list_ui(
 
 fn update_debug_telemetry_ui(
     follow: Res<FollowCar>,
-    telemetry_query: Query<(&CarLabel, &LongitudinalDebugData), With<DebugGizmos>>,
+    telemetry_query: Query<(&CarLabel, &CarTelemetry), With<DebugGizmos>>,
     mut text_query: Query<&mut Text, With<DebugTelemetryText>>,
 ) {
     let Ok(mut text) = text_query.single_mut() else {
@@ -798,32 +799,24 @@ fn update_debug_telemetry_ui(
                     concat!(
                         "{}\n",
                         "v: {:.2} m/s ({:.1} km/h)\n",
-                        "engine: {:.0} rpm | wheel: {:.0} rpm | clutch: {:.2}\n",
+                        "engine: {:.0} rpm | wheel: {:.0} rpm\n",
                         "throttle: {:.2} | brake: {:.2}\n",
-                        "Teng: {:.1} Nm | Tdrive: {:.1} Nm | Tbrake: {:.1} Nm\n",
-                        "Fdrive: {:.1} N | Fbrake: {:.1} N | Frr: {:.1} N | Fdrag: {:.1} N\n",
-                        "Fraw: {:.1} N | Fclamp: {:.1} N | Fmax: {:.1} N\n",
-                        "a: {:.2} m/s^2"
+                        "slip: {:.2}\n",
+                        "Fdrive: {:.1} N | Fmax: {:.1} N | Ftrac: {:.1} N\n",
+
                     ),
                     label.name,
                     telemetry.speed_mps,
                     telemetry.speed_mps * 3.6,
-                    telemetry.engine_rpm,
+                    telemetry.wheel_rpm * 5.0, // gear ratio
                     telemetry.wheel_rpm,
-                    telemetry.clutch_s,
                     telemetry.throttle,
                     telemetry.brake,
-                    telemetry.t_eng,
-                    telemetry.t_drive_axle,
-                    telemetry.t_brake_axle,
+                    telemetry.slip_ratio,
                     telemetry.f_drive,
-                    telemetry.f_brake,
-                    telemetry.f_rr,
-                    telemetry.f_drag,
-                    telemetry.f_raw,
-                    telemetry.f_clamped,
-                    telemetry.traction_limit,
-                    telemetry.a_mps2,
+                    telemetry.f_max,
+                    telemetry.f_traction,
+
                 )
             } else {
                 "Follow a gizmo-enabled car to view telemetry".to_string()
