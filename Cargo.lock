@@ -1714,6 +1714,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bevy_vehicle_dynamics"
+version = "0.1.0"
+dependencies = [
+ "avian2d",
+ "bevy",
+ "tracing",
+]
+
+[[package]]
 name = "bevy_window"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -1,0 +1,10 @@
+[package]
+name = "bevy_vehicle_dynamics"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tracing = "0.1"
+bevy = { version = "0.18", default-features = false }
+avian2d = { version = "0.5.0", default-features = false }
+
