@@ -47,6 +47,7 @@ impl Plugin for RaceRuntimePlugin {
                 (handle_spawn_resolved_event, apply_cpu_frequency_setting),
             )
             .add_systems(Update, handle_car_input)
+            .add_systems(Update, wheel_animation_system.after(handle_car_input))
             .configure_sets(
                 FixedUpdate,
                 (CpuSystems::PreCpu, CpuSystems::Cpu, CpuSystems::PostCpu).chain(),
@@ -398,7 +399,7 @@ fn spawn_car(
 
     let mut entity = commands.spawn((
         Transform::from_xyz(position.x, position.y, 1.0)
-            .with_rotation(Quat::from_axis_angle(Vec3::Z, PI / 3.0)),
+            .with_rotation(Quat::from_axis_angle(Vec3::Z, PI / 2.0)),
         Visibility::default(),
         CarBundle::default(),
         CarLabel {
@@ -521,6 +522,22 @@ fn handle_car_input(
             } else {
                 (car.steer + steer_rate).min(0.0)
             };
+        }
+    }
+}
+
+fn wheel_animation_system(
+        mut car_query: Query<(
+        &Car,
+        &Children,
+    )>,
+    mut wheel_query: Query<&mut Transform, With<FrontWheel>>,
+) {
+    for (car, children) in &mut car_query {
+        for child in children.iter() {
+            if let Ok(mut wheel_transform) = wheel_query.get_mut(child) {
+                wheel_transform.rotation = Quat::from_rotation_z(-car.steer);
+            }
         }
     }
 }

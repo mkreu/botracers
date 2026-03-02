@@ -1,10 +1,10 @@
-use std::f32::consts::PI;
+use std::{cmp::max, f32::consts::PI};
 
-use avian2d::prelude::{forces::ForcesItem, *};
+use avian2d::prelude::*;
 use bevy::{
     color::palettes::css::{BLUE, GREEN, RED, WHITE, YELLOW},
+    math::ops::{atan, sin},
     prelude::*,
-    ui::debug,
 };
 
 use crate::race_runtime::SimState;
@@ -175,6 +175,8 @@ pub struct CarTelemetry {
     pub f_traction: f32,
     pub throttle: f32,
     pub brake: f32,
+    pub slip_angles: [f32; 4],
+    pub lat_forces: [Vec2; 4],
 }
 
 fn engine_system(mut car_query: Query<&mut Car>, params: Res<PowertrainParams>, time: Res<Time>) {
@@ -198,12 +200,13 @@ fn wheel_system(
     time: Res<Time>,
 ) {
     for (transform, mut car, mut forces, mut telemetry, pyhsics, mass) in &mut car_query {
+        info!("steer: {}, throttle: {}, brake: {}", car.steer, car.throttle, car.brake);
         let speed_ms = transform.up().xy().dot(pyhsics.linear_velocity());
         telemetry.speed_mps = speed_ms;
         let true_wheel_omega = speed_ms / wheel_params.radius_m;
         let slip_ratio =
             (true_wheel_omega - car.wheel_omega).abs() / true_wheel_omega.abs().max(1e-3);
-        let slip_factor = (slip_ratio *5.0).clamp(0.0, 1.0);
+        let slip_factor = (slip_ratio * 5.0).clamp(0.0, 1.0);
         telemetry.slip_ratio = slip_ratio;
 
         // m*r² / 2 (x2 for 2 driven wheels)
@@ -227,63 +230,120 @@ fn wheel_system(
         let forward = transform.up().xy().normalize();
         let position = transform.translation.xy();
         let wheel_positions = wheel_offsets.world_positons(transform);
+        let max_wheel_force = max_traction_force / 2.0;
 
-        forces.front_left = compute_tire_force(
+        forces.front_left = compute_lat_tire_force_factor(
             pyhsics.linear_velocity(),
             pyhsics.angular_velocity(),
             wheel_positions.front_left - position,
             Vec2::from_angle(-car.steer).rotate(forward),
+            max_wheel_force,
+            time.delta_secs(),
+            &mut telemetry,
+            0,
         );
-        forces.front_right = compute_tire_force(
+        forces.front_right = compute_lat_tire_force_factor(
             pyhsics.linear_velocity(),
             pyhsics.angular_velocity(),
             wheel_positions.front_right - position,
             Vec2::from_angle(-car.steer).rotate(forward),
+            max_wheel_force,
+            time.delta_secs(),
+            &mut telemetry,
+            1,
         );
-        forces.rear_left = compute_tire_force(
+        forces.rear_left = (compute_lat_tire_force_factor(
             pyhsics.linear_velocity(),
             pyhsics.angular_velocity(),
             wheel_positions.rear_left - position,
             forward,
-        ) + forward * traction_force * 0.5;
-        forces.rear_right = compute_tire_force(
+            max_wheel_force,
+            time.delta_secs(),
+            &mut telemetry,
+            2,
+        ) + forward * traction_force * 0.5)
+            .clamp_length_max(max_wheel_force);
+        forces.rear_right = (compute_lat_tire_force_factor(
             pyhsics.linear_velocity(),
             pyhsics.angular_velocity(),
             wheel_positions.rear_right - position,
             forward,
-        ) + forward * traction_force * 0.5;
+            max_wheel_force,
+            time.delta_secs(),
+            &mut telemetry,
+            3,
+        ) + forward * traction_force * 0.5)
+            .clamp_length_max(max_wheel_force);
     }
 }
 
 fn debug_car_forces(
-    car_query: Query<(&Transform, &CarForces), With<DebugGizmos>>,
+    mut car_query: Query<(&Transform, &CarForces, Forces), With<DebugGizmos>>,
     mut gizmos: Gizmos,
     wheel_offsets: Res<WheelOffsets>,
 ) {
-    for (transform, forces) in &car_query {
+    for (transform, forces, physics) in &mut car_query {
         let wheel_positions = wheel_offsets.world_positons(transform);
-
-        gizmos.cross_2d(transform.translation.xy(), 1.0, WHITE);
-
+        let pos = transform.translation.xy();
         gizmos.arrow_2d(
             wheel_positions.front_left,
-            wheel_positions.front_left + forces.front_left,
-            RED,
+            wheel_positions.front_left
+                + wheel_velocity_at_point(
+                    physics.linear_velocity(),
+                    physics.angular_velocity(),
+                    wheel_positions.front_left - pos,
+                ),
+            GREEN,
+        );
+        gizmos.arrow_2d(
+            wheel_positions.front_left,
+            wheel_positions.front_left + forces.front_left / 100.0,
+            YELLOW,
         );
         gizmos.arrow_2d(
             wheel_positions.front_right,
-            wheel_positions.front_right + forces.front_right,
+            wheel_positions.front_right
+                + wheel_velocity_at_point(
+                    physics.linear_velocity(),
+                    physics.angular_velocity(),
+                    wheel_positions.front_right - pos,
+                ),
+            GREEN,
+        );
+        gizmos.arrow_2d(
+            wheel_positions.front_right,
+            wheel_positions.front_right + forces.front_right / 100.0,
             YELLOW,
         );
         gizmos.arrow_2d(
             wheel_positions.rear_left,
-            wheel_positions.rear_left + forces.rear_left,
+            wheel_positions.rear_left
+                + wheel_velocity_at_point(
+                    physics.linear_velocity(),
+                    physics.angular_velocity(),
+                    wheel_positions.rear_left - pos,
+                ),
+            GREEN,
+        );
+        gizmos.arrow_2d(
+            wheel_positions.rear_left,
+            wheel_positions.rear_left + forces.rear_left / 100.0,
+            YELLOW,
+        );
+        gizmos.arrow_2d(
+            wheel_positions.rear_right,
+            wheel_positions.rear_right
+                + wheel_velocity_at_point(
+                    physics.linear_velocity(),
+                    physics.angular_velocity(),
+                    wheel_positions.rear_right - pos,
+                ),
             GREEN,
         );
         gizmos.arrow_2d(
             wheel_positions.rear_right,
-            wheel_positions.rear_right + forces.rear_right,
-            BLUE,
+            wheel_positions.rear_right + forces.rear_right / 100.0,
+            YELLOW,
         );
     }
 }
@@ -302,11 +362,27 @@ fn apply_car_forces(
     }
 }
 
-fn compute_tire_force(
+fn wheel_velocity_at_point(
+    car_linear_velocity: Vec2,
+    car_angular_velocity: f32,
+    wheel_offset: Vec2,
+) -> Vec2 {
+    car_linear_velocity
+        + Vec2::new(
+            -car_angular_velocity * wheel_offset.y,
+            car_angular_velocity * wheel_offset.x,
+        )
+}
+
+fn compute_lat_tire_force_factor(
     car_linear_velocity: Vec2,
     car_angular_velocity: f32,
     wheel_offset: Vec2,
     wheel_forward: Vec2,
+    max_wheel_force: f32,
+    delta_time: f32,
+    telemetry: &mut CarTelemetry,
+    wheel_index: usize,
 ) -> Vec2 {
     let wheel_left = wheel_forward.perp();
 
@@ -316,14 +392,29 @@ fn compute_tire_force(
             car_angular_velocity * wheel_offset.x,
         );
 
-    if wheel_velocity.length() > 0.1 {
-        let force = -wheel_velocity.normalize().dot(wheel_left)
-            * wheel_left
-            * 10.0_f32.min(wheel_velocity.length() * 5.0);
-        return force;
+    const B: f32 = 3.0;
+    const C: f32 = 2.7;
+    const D: f32 = 1.0;
+    const E: f32 = 1.0;
+
+    let slip_angle = wheel_velocity.angle_to(wheel_forward);
+
+    let wheel_force =
+        D * sin(C * atan(B * slip_angle - E * (B * slip_angle - atan(B * slip_angle))));
+
+    let force_ratio = wheel_force * (wheel_velocity.length() / 1.0).clamp(0.0, 1.0);
+
+    let res = if wheel_velocity.length() < 0.1 {
+        Vec2::ZERO
     } else {
-        return Vec2::ZERO;
-    }
+        let weight_on_tire = max_wheel_force / 9.81;
+        let lat_speed = wheel_velocity.dot(wheel_left).abs();
+        let req_alignment_force = lat_speed / delta_time * weight_on_tire / 10.0;
+        wheel_left * (force_ratio * max_wheel_force).clamp(-req_alignment_force, req_alignment_force)
+    };
+    telemetry.slip_angles[wheel_index] = slip_angle;
+    telemetry.lat_forces[wheel_index] = res;
+    res
 }
 
 #[derive(Component)]

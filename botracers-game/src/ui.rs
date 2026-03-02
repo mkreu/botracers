@@ -803,6 +803,8 @@ fn update_debug_telemetry_ui(
                         "throttle: {:.2} | brake: {:.2}\n",
                         "slip: {:.2}\n",
                         "Fdrive: {:.1} N | Fmax: {:.1} N | Ftrac: {:.1} N\n",
+                        "slip angles: [{:.2}, {:.2}, {:.2}, {:.2}]\n",
+                        "lat forces: [{:.1}, {:.1}, {:.1}, {:.1}]\n",
 
                     ),
                     label.name,
@@ -816,6 +818,14 @@ fn update_debug_telemetry_ui(
                     telemetry.f_drive,
                     telemetry.f_max,
                     telemetry.f_traction,
+                    telemetry.slip_angles[0],
+                    telemetry.slip_angles[1],
+                    telemetry.slip_angles[2],
+                    telemetry.slip_angles[3],
+                    telemetry.lat_forces[0].length(),
+                    telemetry.lat_forces[1].length(),
+                    telemetry.lat_forces[2].length(),
+                    telemetry.lat_forces[3].length(),
 
                 )
             } else {

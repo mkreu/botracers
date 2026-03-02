@@ -78,8 +78,8 @@ fn main() -> ! {
 
         // Smooth proportional steering with lower gain
         // Negate because physics uses -car.steer
-        let max_steer = PI / 6.0;
-        let desired_steer = (-angle_to_target * 0.8).clamp(-max_steer, max_steer);
+        let max_steer = 1.0;
+        let desired_steer = (-angle_to_target * 0.3).clamp(-max_steer, max_steer);
         let steer_blend = 0.1; // How quickly to change steering (lower = smoother)
         car_controls.set_steering(
             car_controls.steering() * (1.0 - steer_blend) + desired_steer * steer_blend,

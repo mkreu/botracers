@@ -121,6 +121,6 @@ pub fn update_system(mut emu_query: Query<(&mut Car, &CarControlsDevice)>) {
     for (mut car, ctrl_dev) in &mut emu_query {
         car.throttle = ctrl_dev.accelerator();
         car.brake = ctrl_dev.brake();
-        car.steer = ctrl_dev.steering();
+        car.steer += (ctrl_dev.steering() - car.steer).clamp(-0.01, 0.01);
     }
 }
