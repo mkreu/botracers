@@ -131,7 +131,7 @@ fn compute_wheel_forces(
     >,
     time: Res<Time<Physics>>,
 ) {
-    if time.is_paused() {
+    if time.is_paused() || time.delta_secs() == 0.0 {
         return;
     }
     for (wheel, state, mut forces, telemetry) in query.iter_mut() {
@@ -182,9 +182,14 @@ fn compute_wheel_forces(
             pacejka * traction_force
         };
 
+        let lon_velocity = state.global_velocity.dot(wheel_forward);
         let lat_velocity = state.global_velocity.dot(wheel_forward.perp()).abs();
-
-        forces.lateral = lat_force.clamp(-lat_velocity * 100.0, lat_velocity * 100.0);
+        let load_mass = state.wheel_load / 9.81;
+        let clamp_force = load_mass * lat_velocity * time.delta_secs().recip();
+        info!("lat_velocity: {}, lon_velocity: {}", lat_velocity, lon_velocity);
+        info!("lat_force: {}, clamp_force: {}", lat_force, clamp_force);
+        info!("time delta: {}", time.delta_secs());
+        forces.lateral = lat_force.clamp(-clamp_force, clamp_force);
         //forces.lateral = 0.0;
         forces.longitudinal = lon_force;
 
@@ -198,26 +203,26 @@ fn compute_wheel_forces(
 }
 
 fn apply_wheel_forces(
-    mut car_query: Query<Forces, With<Vehicle>>,
+    mut car_query: Query<(Forces, &ComputedMass),  With<Vehicle>>,
     mut wheel_query: Query<(&WheelState, &WheelForces)>,
     time: Res<Time<Physics>>,
 ) {
     if time.is_paused() {
         return;
     }
-    for mut car_forces in &mut car_query {
+    for (mut car_forces, car_mass) in &mut car_query {
         for (wheel_state, wheel_forces) in &mut wheel_query {
             let forward = Vec2::new(
                 -wheel_state.global_rotation.sin(),
                 wheel_state.global_rotation.cos(),
             );
             let left = forward.perp();
-            car_forces.apply_force_at_point(
-                wheel_forces.longitudinal * forward,
+            car_forces.apply_linear_acceleration_at_point(
+                wheel_forces.longitudinal * car_mass.inverse() * forward,
                 wheel_state.global_position,
             );
             car_forces
-                .apply_force_at_point(wheel_forces.lateral * left, wheel_state.global_position);
+                .apply_linear_acceleration_at_point(wheel_forces.lateral * car_mass.inverse() * left, wheel_state.global_position);
         }
     }
 }
