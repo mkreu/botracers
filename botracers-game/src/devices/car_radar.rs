@@ -1,7 +1,6 @@
 use bevy::prelude::*;
+use bevy_vehicle_dynamics::Vehicle;
 use emulator::cpu::Device;
-
-use crate::race_runtime::car_dynamics::Car;
 
 /// Memory-mapped device exposing absolute positions of up to the 4 nearest cars.
 ///
@@ -87,7 +86,7 @@ impl Device for CarRadarDevice {
 
 /// Runs BEFORE cpu_system::<RacingCpuConfig>: writes nearest-car positions into CarRadarDevice.
 pub fn update_system(
-    all_cars: Query<(Entity, &Transform), With<Car>>,
+    all_cars: Query<(Entity, &Transform), With<Vehicle>>,
     mut emu_query: Query<(Entity, &Transform, &mut CarRadarDevice)>,
 ) {
     let car_positions: Vec<(Entity, Vec2)> = all_cars

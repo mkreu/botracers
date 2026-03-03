@@ -15,7 +15,14 @@ impl Plugin for VehicleDynamicsPlugin {
     fn build(&self, app: &mut bevy::prelude::App) {
         app.add_systems(
             FixedUpdate,
-            (drivetrain_system, compute_wheel_forces, drivetrain_feedback).chain(),
+            (
+                drivetrain_system,
+                compute_wheel_forces,
+                apply_wheel_forces,
+                drivetrain_feedback,
+            )
+                .chain()
+                .in_set(PhysicsSystems::First),
         );
     }
 }
@@ -23,8 +30,8 @@ impl Plugin for VehicleDynamicsPlugin {
 #[derive(Component)]
 #[require(VehicleState)]
 pub struct Vehicle {
-    throttle: f32,
-    max_torque: f32,
+    pub throttle: f32,
+    pub max_torque: f32,
 }
 
 #[derive(Component, Default)]
@@ -32,16 +39,17 @@ pub struct VehicleState {
     drive_axle_angular_velocity: f32,
 }
 
-#[derive(Component)]
+#[derive(Component, Debug)]
 #[require(WheelState, WheelForces)]
 pub struct Wheel {
-    is_driven: bool,
-    radius: f32,
-    //mass: f32,
+    pub is_driven: bool,
+    pub radius: f32,
+    //pub mass: f32,
 }
 
-#[derive(Component, Default)]
+#[derive(Component, Default, Debug)]
 struct WheelState {
+    global_position: Vec2,
     global_rotation: f32,
     global_velocity: Vec2,
     wheel_load: f32,
@@ -49,13 +57,13 @@ struct WheelState {
     drive_torque: f32,
 }
 
-#[derive(Component, Default)]
+#[derive(Component, Default, Debug)]
 pub struct WheelForces {
     longitudinal: f32,
     lateral: f32,
 }
 
-#[derive(Component, Default)]
+#[derive(Component, Default, Debug)]
 pub struct WheelTelemetry {
     slip_angle: f32,
     slip_ratio: f32,
@@ -79,16 +87,24 @@ fn drivetrain_system(
         &Children,
     )>,
     mut wheel_query: Query<(&Transform, &Wheel, &mut WheelState)>,
+    time: Res<Time<Physics>>,
 ) {
+    if time.is_paused() {
+        return;
+    }
     for (car, car_state, car_transform, physics, children) in query.iter() {
         for child in children.iter() {
             if let Ok((wheel_transform, wheel, mut state)) = wheel_query.get_mut(child) {
                 state.global_rotation = car_transform.rotation.to_euler(EulerRot::XYZ).2
                     + wheel_transform.rotation.to_euler(EulerRot::XYZ).2;
                 let global_position = car_transform.transform_point(wheel_transform.translation);
+                state.global_position = global_position.xy();
 
-                state.global_velocity =
-                    physics.linear_velocity.0 + physics.angular_velocity.0 * global_position.yx();
+                state.global_velocity = physics.linear_velocity.0
+                    + (Mat2::from_angle(car_transform.rotation.to_euler(EulerRot::XYZ).2)
+                        * wheel_transform.translation.xy())
+                    .perp()
+                        * physics.angular_velocity.0;
 
                 state.wheel_load = physics.mass.value() * 9.81 / 4.0; // Simplified load distribution
 
@@ -113,11 +129,19 @@ fn compute_wheel_forces(
         ),
         With<Wheel>,
     >,
+    time: Res<Time<Physics>>,
 ) {
+    if time.is_paused() {
+        return;
+    }
     for (wheel, state, mut forces, telemetry) in query.iter_mut() {
-        let wheel_forward = Vec2::new(state.global_rotation.cos(), state.global_rotation.sin());
+        let wheel_forward = Vec2::new(-state.global_rotation.sin(), state.global_rotation.cos());
 
-        let slip_angle = state.global_velocity.angle_to(wheel_forward);
+        let slip_angle = if state.global_velocity.length() > 0.1 {
+            state.global_velocity.angle_to(wheel_forward)
+        } else {
+            0.0
+        };
 
         let slip_ratio = {
             let velocity_along_forward = state.global_velocity.dot(wheel_forward);
@@ -158,7 +182,10 @@ fn compute_wheel_forces(
             pacejka * traction_force
         };
 
-        forces.lateral = lat_force;
+        let lat_velocity = state.global_velocity.dot(wheel_forward.perp()).abs();
+
+        forces.lateral = lat_force.clamp(-lat_velocity * 100.0, lat_velocity * 100.0);
+        //forces.lateral = 0.0;
         forces.longitudinal = lon_force;
 
         if let Some(mut telemetry) = telemetry {
@@ -170,11 +197,39 @@ fn compute_wheel_forces(
     }
 }
 
+fn apply_wheel_forces(
+    mut car_query: Query<Forces, With<Vehicle>>,
+    mut wheel_query: Query<(&WheelState, &WheelForces)>,
+    time: Res<Time<Physics>>,
+) {
+    if time.is_paused() {
+        return;
+    }
+    for mut car_forces in &mut car_query {
+        for (wheel_state, wheel_forces) in &mut wheel_query {
+            let forward = Vec2::new(
+                -wheel_state.global_rotation.sin(),
+                wheel_state.global_rotation.cos(),
+            );
+            let left = forward.perp();
+            car_forces.apply_force_at_point(
+                wheel_forces.longitudinal * forward,
+                wheel_state.global_position,
+            );
+            car_forces
+                .apply_force_at_point(wheel_forces.lateral * left, wheel_state.global_position);
+        }
+    }
+}
+
 fn drivetrain_feedback(
     mut query: Query<(&Vehicle, &mut VehicleState, &Children)>,
     wheel_query: Query<(&Wheel, &WheelForces), With<Wheel>>,
-    time: Res<Time>,
+    time: Res<Time<Physics>>,
 ) {
+    if time.is_paused() {
+        return;
+    }
     for (car, mut car_state, children) in query.iter_mut() {
         let mut total_traction_torque = 0.0;
         let mut angular_inertia = 0.0;

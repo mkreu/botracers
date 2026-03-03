@@ -1906,6 +1906,7 @@ dependencies = [
  "avian2d",
  "base64",
  "bevy",
+ "bevy_vehicle_dynamics",
  "botracers-protocol",
  "botracers-server",
  "ehttp",

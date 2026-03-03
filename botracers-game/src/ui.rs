@@ -2,9 +2,8 @@ use bevy::prelude::*;
 
 use crate::bootstrap::WebPortalState;
 use crate::game_api::{DriverType, SpawnCarRequest, WebApiCommand};
-use crate::race_runtime::car_dynamics::CarTelemetry;
 use crate::race_runtime::{
-    CarLabel, CpuFrequencySetting, DebugGizmos, FollowCar, RaceManager,
+    CarLabel, CpuFrequencySetting, FollowCar, RaceManager,
     SimState,
 };
 
@@ -615,6 +614,9 @@ fn handle_remove_car_button(
     }
 }
 
+#[derive(Component)]
+struct DebugGizmos;
+
 fn handle_toggle_gizmos_button(
     query: Query<(&Interaction, &ToggleGizmosButton), Changed<Interaction>>,
     mut commands: Commands,
@@ -784,15 +786,15 @@ fn update_car_list_ui(
 }
 
 fn update_debug_telemetry_ui(
-    follow: Res<FollowCar>,
-    telemetry_query: Query<(&CarLabel, &CarTelemetry), With<DebugGizmos>>,
+    _follow: Res<FollowCar>,
+    _telemetry_query: Query<(&CarLabel, ()), With<DebugGizmos>>,
     mut text_query: Query<&mut Text, With<DebugTelemetryText>>,
 ) {
     let Ok(mut text) = text_query.single_mut() else {
         return;
     };
-
-    let message = match follow.target {
+    let message = "TODO".to_string();
+    /*let message = match follow.target {
         Some(entity) => {
             if let Ok((label, telemetry)) = telemetry_query.get(entity) {
                 format!(
@@ -833,7 +835,7 @@ fn update_debug_telemetry_ui(
             }
         }
         None => "Follow a gizmo-enabled car to view telemetry".to_string(),
-    };
+    };*/
 
     text.0 = message;
 }

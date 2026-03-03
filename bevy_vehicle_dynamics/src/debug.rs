@@ -13,8 +13,8 @@ impl Plugin for VehicleDynamicsDebugPlugin {
 fn draw_wheel_gizmos(
     query: Query<
         (
-            &GlobalTransform,
             &Wheel,
+            &WheelState,
             &WheelForces,
             &WheelTelemetry,
         ),
@@ -22,27 +22,27 @@ fn draw_wheel_gizmos(
     >,
     mut gizmos: Gizmos,
 ) {
-    for (transform, wheel, forces, telemetry) in query.iter() {
+    for (wheel, state, forces, telemetry) in query.iter() {
         let wheel_forward = telemetry.wheel_forward;
         let wheel_left = wheel_forward.perp();
-        let pos = transform.translation().xy();
+        let pos = state.global_position;
 
         // Draw the wheel as a line in the forward direction
-        gizmos.line_2d(
+        gizmos.arrow_2d(
             pos - wheel_forward * wheel.radius,
             pos + wheel_forward * wheel.radius,
             WHITE,
         );
 
         // Draw wheel velocity
-        gizmos.line_2d(
+        gizmos.arrow_2d(
             pos,
-            pos + telemetry.wheel_velocity * 0.1,
+            pos + telemetry.wheel_velocity,
             GREEN,
         );
 
         // Draw force vector
-        gizmos.line_2d(
+        gizmos.arrow_2d(
             pos,
             pos + wheel_forward * forces.longitudinal * 0.1 + wheel_left * forces.lateral * 0.1,
             YELLOW,

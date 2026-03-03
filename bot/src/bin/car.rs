@@ -86,7 +86,7 @@ fn main() -> ! {
         );
 
         // Straight or gentle curve - full throttle
-        car_controls.set_accelerator(1.0 * 0.1);
+        car_controls.set_accelerator(1.0);
         car_controls.set_brake(0.0);
     }
 }

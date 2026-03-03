@@ -2,27 +2,25 @@ use std::f32::consts::PI;
 
 use avian2d::prelude::*;
 use bevy::{
-    color::palettes::css::{RED, WHITE},
+    color::palettes::css::WHITE,
     diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
     input::mouse::{MouseMotion, MouseWheel},
     prelude::*,
 };
+use bevy_vehicle_dynamics::{Vehicle, VehicleDynamicsDebugPlugin, VehicleDynamicsPlugin, Wheel, WheelTelemetry};
 use emulator::bevy::{CpuComponent, cpu_system};
 use emulator::cpu::LogDevice;
 
-use crate::{devices::{
-    self, CarControlsDevice, CarRadarDevice, CarStateDevice, SplineDevice, TrackRadarDevice,
-}, race_runtime::car_dynamics::CarBundle};
-use crate::race_runtime::car_dynamics::{Car, FrontWheel, WHEEL_BASE, WHEEL_TRACK};
+use crate::devices::{
+    self, CarControlsDevice, CarRadarDevice, CarStateDevice, SplineDevice, TrackRadarBorders,
+    TrackRadarDevice,
+};
 use crate::track;
 use crate::track_format::TrackFile;
-use crate::{devices::TrackRadarBorders, race_runtime::car_dynamics::CarDynamicsPlugin};
 
 use crate::game_api::{DriverType, SpawnResolvedCarRequest};
 
-pub use crate::race_runtime::car_dynamics::DebugGizmos;
-
-pub mod car_dynamics;
+//pub mod car_dynamics;
 
 pub struct RaceRuntimePlugin;
 
@@ -31,7 +29,7 @@ impl Plugin for RaceRuntimePlugin {
         app.init_state::<SimState>()
             .insert_resource(Gravity::ZERO)
             .insert_resource(Time::<Fixed>::from_duration(
-                std::time::Duration::from_secs_f32(1.0 / FIXED_TICK_HZ as f32),
+                std::time::Duration::from_secs_f32(1.0 / (FIXED_TICK_HZ as f32)),
             ))
             .insert_resource(RaceManager::default())
             .insert_resource(FollowCar::default())
@@ -46,8 +44,7 @@ impl Plugin for RaceRuntimePlugin {
                 Update,
                 (handle_spawn_resolved_event, apply_cpu_frequency_setting),
             )
-            .add_systems(Update, handle_car_input)
-            .add_systems(Update, wheel_animation_system.after(handle_car_input))
+            .add_systems(FixedUpdate, wheel_steering_system)
             .configure_sets(
                 FixedUpdate,
                 (CpuSystems::PreCpu, CpuSystems::Cpu, CpuSystems::PostCpu).chain(),
@@ -59,12 +56,12 @@ impl Plugin for RaceRuntimePlugin {
                     devices::car_radar_system.in_set(CpuSystems::PreCpu),
                     devices::track_radar_system.in_set(CpuSystems::PreCpu),
                     cpu_system::<RacingCpuConfig>.in_set(CpuSystems::Cpu),
-                    devices::car_controls_system.in_set(CpuSystems::PostCpu),
                 )
                     .run_if(in_state(SimState::Racing)),
             )
-            .add_plugins(CarDynamicsPlugin)
-            .add_systems(Update, (update_fps_counter, update_camera, draw_gizmos));
+            .add_plugins(VehicleDynamicsPlugin)
+            .add_plugins(VehicleDynamicsDebugPlugin)
+            .add_systems(Update, (update_fps_counter, update_camera));
     }
 }
 
@@ -102,6 +99,9 @@ pub struct CarEntry {
 pub struct FollowCar {
     pub target: Option<Entity>,
 }
+
+#[derive(Component, Default)]
+pub struct FrontWheel;
 
 pub const FIXED_TICK_HZ: u32 = 200;
 const CPU_FREQUENCY_PRESETS_HZ: [u32; 10] = [
@@ -386,6 +386,10 @@ fn spawn_car_entry(
     manager.next_car_id += 1;
 }
 
+pub const WHEEL_BASE: f32 = 1.18;
+pub const WHEEL_TRACK: f32 = 0.95;
+pub const WHEEL_RADIUS: f32 = 0.13;
+
 fn spawn_car(
     commands: &mut Commands,
     asset_server: &AssetServer,
@@ -401,7 +405,15 @@ fn spawn_car(
         Transform::from_xyz(position.x, position.y, 1.0)
             .with_rotation(Quat::from_axis_angle(Vec3::Z, PI / 2.0)),
         Visibility::default(),
-        CarBundle::default(),
+        Vehicle {
+            throttle: 0.0,
+            max_torque: 22.0,
+        },
+        RigidBody::Dynamic,
+        Friction::new(0.1),
+        Restitution::new(0.2),
+        Mass(165.0),
+        CenterOfMass::new(0.0, 0.66),
         CarLabel {
             name: name.to_string(),
         },
@@ -437,6 +449,11 @@ fn spawn_car(
                 Transform::from_xyz(-WHEEL_TRACK / 2.0, WHEEL_BASE, 0.1),
                 Visibility::default(),
                 FrontWheel,
+                Wheel {
+                    radius: WHEEL_RADIUS,
+                    is_driven: false,
+                },
+                WheelTelemetry::default(),
             ))
             .with_children(|parent| {
                 parent.spawn((
@@ -452,6 +469,11 @@ fn spawn_car(
                 Transform::from_xyz(WHEEL_TRACK / 2.0, WHEEL_BASE, 0.1),
                 Visibility::default(),
                 FrontWheel,
+                Wheel {
+                    radius: WHEEL_RADIUS,
+                    is_driven: false,
+                },
+                WheelTelemetry::default(),
             ))
             .with_children(|parent| {
                 parent.spawn((
@@ -461,6 +483,25 @@ fn spawn_car(
                         .with_rotation(Quat::from_rotation_z(PI)),
                 ));
             });
+
+        parent.spawn((
+            Transform::from_xyz(-WHEEL_TRACK / 2.0, 0.0, 0.0),
+            Visibility::default(),
+            Wheel {
+                radius: WHEEL_RADIUS,
+                is_driven: true,
+            },
+            WheelTelemetry::default(),
+        ));
+        parent.spawn((
+            Transform::from_xyz(WHEEL_TRACK / 2.0, 0.0, 0.0),
+            Visibility::default(),
+            Wheel {
+                radius: WHEEL_RADIUS,
+                is_driven: true,
+            },
+            WheelTelemetry::default(),
+        ));
     });
 
     entity_id
@@ -494,71 +535,23 @@ emulator::define_cpu_config! {
     }
 }
 
-fn handle_car_input(
-    mut car_query: Query<&mut Car, Without<EmulatorDriver>>,
-    keyboard: Res<ButtonInput<KeyCode>>,
-) {
-    for mut car in &mut car_query {
-        car.throttle = if keyboard.pressed(KeyCode::KeyW) {
-            1.0
-        } else {
-            0.0
-        };
-        car.brake = if keyboard.pressed(KeyCode::KeyS) {
-            1.0
-        } else {
-            0.0
-        };
-
-        let max_steer = PI / 6.0;
-        let steer_rate = 0.05 * car.steer.abs().max(0.1);
-        if keyboard.pressed(KeyCode::KeyA) {
-            car.steer = (-max_steer).max(car.steer - steer_rate);
-        } else if keyboard.pressed(KeyCode::KeyD) {
-            car.steer = max_steer.min(car.steer + steer_rate);
-        } else {
-            car.steer = if car.steer > 0.0 {
-                (car.steer - steer_rate).max(0.0)
-            } else {
-                (car.steer + steer_rate).min(0.0)
-            };
-        }
-    }
-}
-
-fn wheel_animation_system(
-        mut car_query: Query<(
-        &Car,
-        &Children,
-    )>,
+fn wheel_steering_system(
+    mut car_query: Query<(&mut Vehicle, &CarControlsDevice, &Children)>,
     mut wheel_query: Query<&mut Transform, With<FrontWheel>>,
 ) {
-    for (car, children) in &mut car_query {
+    for (mut car, car_controls, children) in &mut car_query {
         for child in children.iter() {
             if let Ok(mut wheel_transform) = wheel_query.get_mut(child) {
-                wheel_transform.rotation = Quat::from_rotation_z(-car.steer);
+                wheel_transform.rotation = Quat::from_rotation_z(-car_controls.steering());
             }
         }
-    }
-}
-
-fn draw_gizmos(car_query: Query<(&Transform, &Car), With<DebugGizmos>>, mut gizmos: Gizmos) {
-    for (transform, _car) in &car_query {
-        gizmos.cross(transform.to_isometry(), 0.2, RED);
-        gizmos.cross(
-            Isometry3d::new(
-                transform.translation + transform.up() * WHEEL_BASE,
-                transform.rotation,
-            ),
-            0.2,
-            RED,
-        );
+        car.throttle = car_controls.accelerator();
     }
 }
 
 fn update_camera(
-    car_query: Query<&Transform, With<Car>>,
-    mut camera_query: Query<(&mut Transform, &mut Projection), (With<Camera2d>, Without<Car>)>,
+    car_query: Query<&Transform, With<Vehicle>>,
+    mut camera_query: Query<(&mut Transform, &mut Projection), (With<Camera2d>, Without<Vehicle>)>,
     mut scroll_events: MessageReader<MouseWheel>,
     mut motion_events: MessageReader<MouseMotion>,
     mouse_buttons: Res<ButtonInput<MouseButton>>,
