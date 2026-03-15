@@ -408,6 +408,7 @@ fn spawn_car(
         Vehicle {
             throttle: 0.0,
             max_torque: 22.0,
+            max_engine_rpm: 6000.0,
         },
         RigidBody::Dynamic,
         Friction::new(0.1),
@@ -452,6 +453,7 @@ fn spawn_car(
                 Wheel {
                     radius: WHEEL_RADIUS,
                     is_driven: false,
+                    tire_mu: 1.2,
                 },
                 WheelTelemetry::default(),
             ))
@@ -472,6 +474,7 @@ fn spawn_car(
                 Wheel {
                     radius: WHEEL_RADIUS,
                     is_driven: false,
+                    tire_mu: 1.2,
                 },
                 WheelTelemetry::default(),
             ))
@@ -490,6 +493,7 @@ fn spawn_car(
             Wheel {
                 radius: WHEEL_RADIUS,
                 is_driven: true,
+                tire_mu: 0.8,
             },
             WheelTelemetry::default(),
         ));
@@ -499,6 +503,7 @@ fn spawn_car(
             Wheel {
                 radius: WHEEL_RADIUS,
                 is_driven: true,
+                tire_mu: 0.8,
             },
             WheelTelemetry::default(),
         ));

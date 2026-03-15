@@ -32,6 +32,7 @@ impl Plugin for VehicleDynamicsPlugin {
 pub struct Vehicle {
     pub throttle: f32,
     pub max_torque: f32,
+    pub max_engine_rpm: f32,
 }
 
 #[derive(Component, Default)]
@@ -44,6 +45,7 @@ pub struct VehicleState {
 pub struct Wheel {
     pub is_driven: bool,
     pub radius: f32,
+    pub tire_mu: f32,
     //pub mass: f32,
 }
 
@@ -164,7 +166,7 @@ fn compute_wheel_forces(
             let pacejka =
                 D * sin(C * atan(B * slip_angle - E * (B * slip_angle - atan(B * slip_angle))));
 
-            pacejka * state.wheel_load
+            pacejka * state.wheel_load * wheel.tire_mu
         };
 
         let lon_force = {
@@ -179,18 +181,14 @@ fn compute_wheel_forces(
             let drive_force = state.drive_torque / wheel.radius;
             let traction_force = (drive_force * pacejka).clamp(-state.wheel_load, state.wheel_load);
 
-            pacejka * traction_force
+            pacejka * traction_force * wheel.tire_mu
         };
 
-        let lon_velocity = state.global_velocity.dot(wheel_forward);
+        //let lon_velocity = state.global_velocity.dot(wheel_forward);
         let lat_velocity = state.global_velocity.dot(wheel_forward.perp()).abs();
         let load_mass = state.wheel_load / 9.81;
         let clamp_force = load_mass * lat_velocity * time.delta_secs().recip();
-        info!("lat_velocity: {}, lon_velocity: {}", lat_velocity, lon_velocity);
-        info!("lat_force: {}, clamp_force: {}", lat_force, clamp_force);
-        info!("time delta: {}", time.delta_secs());
         forces.lateral = lat_force.clamp(-clamp_force, clamp_force);
-        //forces.lateral = 0.0;
         forces.longitudinal = lon_force;
 
         if let Some(mut telemetry) = telemetry {
@@ -249,5 +247,6 @@ fn drivetrain_feedback(
         let driving_torque = car.throttle * car.max_torque;
         car_state.drive_axle_angular_velocity +=
             (driving_torque - total_traction_torque) / angular_inertia * time.delta_secs();
+        car_state.drive_axle_angular_velocity = car_state.drive_axle_angular_velocity.clamp(0.0, car.max_engine_rpm * 2.0 * std::f32::consts::PI / 60.0);
     }
 }
