@@ -4,7 +4,7 @@
 use core::{f32::consts::PI, fmt::Write};
 
 use botracers_bot_sdk::{
-    driving::{CarControls, CarState, SplineQuery},
+    driving::{CarControls, CarState, SplineQuery, WHEEL_RADIUS},
     log, SLOT2, SLOT3, SLOT4,
 };
 
@@ -86,7 +86,21 @@ fn main() -> ! {
         );
 
         // Straight or gentle curve - full throttle
-        car_controls.set_accelerator(1.0);
+        car_controls.set_accelerator(traction_control(1.0, &car_state));
         car_controls.set_brake(0.0);
+    }
+}
+
+fn traction_control(accel: f32, car_state: &CarState) -> f32 {
+    let speed = car_state.speed();
+    let engine_rpm = car_state.engine_rpm();
+
+    let expected_rpm = speed / WHEEL_RADIUS * 60.0 / (2.0 * PI);
+
+
+    if expected_rpm > 1000.0 && engine_rpm > expected_rpm {
+        expected_rpm / engine_rpm * accel
+    } else {
+        accel
     }
 }

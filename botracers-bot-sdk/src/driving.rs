@@ -8,6 +8,8 @@ pub struct CarControls {
     steering: *mut f32,
 }
 
+pub const WHEEL_RADIUS: f32 = 0.13;
+
 impl CarControls {
     pub const fn bind(slot: usize) -> Self {
         Self {
@@ -48,6 +50,7 @@ pub struct CarState {
     position_y: *const f32,
     forward_x: *const f32,
     forward_y: *const f32,
+    engine_rpm: *const f32,
 }
 
 impl CarState {
@@ -58,6 +61,7 @@ impl CarState {
             position_y: (slot + 0x08) as *const f32,
             forward_x: (slot + 0x0C) as *const f32,
             forward_y: (slot + 0x10) as *const f32,
+            engine_rpm: (slot + 0x14) as *const f32,
         }
     }
     pub fn speed(&self) -> f32 {
@@ -78,6 +82,9 @@ impl CarState {
                 ptr::read_volatile(self.forward_y),
             )
         }
+    }
+    pub fn engine_rpm(&self) -> f32 {
+        unsafe { ptr::read_volatile(self.engine_rpm) }
     }
 }
 

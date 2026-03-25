@@ -37,7 +37,7 @@ pub struct Vehicle {
 
 #[derive(Component, Default)]
 pub struct VehicleState {
-    drive_axle_angular_velocity: f32,
+    pub drive_axle_angular_velocity: f32,
 }
 
 #[derive(Component, Debug)]
@@ -209,28 +209,30 @@ fn compute_wheel_forces(
 }
 
 fn apply_wheel_forces(
-    mut car_query: Query<(Forces, &ComputedMass), With<Vehicle>>,
-    mut wheel_query: Query<(&WheelState, &WheelForces)>,
+    mut car_query: Query<(Forces, &Children), With<Vehicle>>,
+    wheel_query: Query<(&WheelState, &WheelForces)>,
     time: Res<Time<Physics>>,
 ) {
     if time.is_paused() {
         return;
     }
-    for (mut car_forces, _car_mass) in &mut car_query {
-        for (wheel_state, wheel_forces) in &mut wheel_query {
-            let forward = Vec2::new(
-                -wheel_state.global_rotation.sin(),
-                wheel_state.global_rotation.cos(),
-            );
-            let left = forward.perp();
-            car_forces.apply_force_at_point(
-                wheel_forces.longitudinal* forward,
-                wheel_state.global_position,
-            );
-            car_forces.apply_force_at_point(
-                wheel_forces.lateral * left,
-                wheel_state.global_position,
-            );
+    for (mut car_forces, children) in &mut car_query {
+        for child in children.iter() {
+            if let Ok((wheel_state, wheel_forces)) = wheel_query.get(child) {
+                let forward = Vec2::new(
+                    -wheel_state.global_rotation.sin(),
+                    wheel_state.global_rotation.cos(),
+                );
+                let left = forward.perp();
+                car_forces.apply_force_at_point(
+                    wheel_forces.longitudinal * forward,
+                    wheel_state.global_position,
+                );
+                car_forces.apply_force_at_point(
+                    wheel_forces.lateral * left,
+                    wheel_state.global_position,
+                );
+            }
         }
     }
 }

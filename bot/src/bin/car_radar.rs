@@ -4,7 +4,7 @@
 use core::{f32::consts::PI, fmt::Write};
 
 use botracers_bot_sdk::{
-    driving::{CarControls, CarState, TrackRadar},
+    driving::{CarControls, CarState, TrackRadar, WHEEL_RADIUS},
     log, SLOT2, SLOT3, SLOT5,
 };
 
@@ -58,7 +58,7 @@ fn main() -> ! {
             .set_steering(current_steer * (1.0 - steer_blend) + desired_steer * steer_blend);
 
         // Speed policy from front clearance and current speed.
-        let accel: f32 = 1.0;
+        let accel: f32 = traction_control(1.0, &car_state);
         let mut brake: f32 = 0.0;
         
         if c < 20.0 && speed > 40.0/3.6 {
@@ -81,5 +81,18 @@ fn sanitize_distance(distance: f32) -> f32 {
         80.0
     } else {
         distance
+    }
+}
+
+fn traction_control(accel: f32, car_state: &CarState) -> f32 {
+    let speed = car_state.speed();
+    let engine_rpm = car_state.engine_rpm();
+
+    let expected_rpm = speed / WHEEL_RADIUS * 60.0 / (2.0 * PI);
+
+    if expected_rpm > 10.0 && engine_rpm > expected_rpm * 1.2 {
+        0.0
+    } else {
+        accel
     }
 }

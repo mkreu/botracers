@@ -1,5 +1,6 @@
 use avian2d::prelude::*;
 use bevy::prelude::*;
+use bevy_vehicle_dynamics::VehicleState;
 use emulator::cpu::Device;
 
 /// Memory-mapped device that provides car state to the RISC-V bot.
@@ -12,12 +13,12 @@ use emulator::cpu::Device;
 ///   0x10: forward_y
 #[derive(Component)]
 pub struct CarStateDevice {
-    data: [u8; 20], // 5 × f32
+    data: [u8; 24], // 6 × f32
 }
 
 impl Default for CarStateDevice {
     fn default() -> Self {
-        Self { data: [0u8; 20] }
+        Self { data: [0u8; 24] }
     }
 }
 
@@ -28,12 +29,13 @@ impl CarStateDevice {
     }
 
     /// Write the full car state from the simulation.
-    pub fn update(&mut self, speed: f32, position: Vec2, forward: Vec2) {
+    pub fn update(&mut self, speed: f32, position: Vec2, forward: Vec2, engine_rpm: f32) {
         self.write_f32(0x00, speed);
         self.write_f32(0x04, position.x);
         self.write_f32(0x08, position.y);
         self.write_f32(0x0C, forward.x);
         self.write_f32(0x10, forward.y);
+        self.write_f32(0x14, engine_rpm);
     }
 }
 
@@ -76,11 +78,12 @@ impl Device for CarStateDevice {
 }
 
 /// Runs BEFORE cpu_system::<RacingCpuConfig>: writes host car kinematics into CarStateDevice.
-pub fn system(mut emu_query: Query<(&Transform, &LinearVelocity, &mut CarStateDevice)>) {
-    for (transform, velocity, mut state_dev) in &mut emu_query {
+pub fn system(mut emu_query: Query<(&Transform, &LinearVelocity, &VehicleState, &mut CarStateDevice)>) {
+    for (transform, velocity, vehicle_state, mut state_dev) in &mut emu_query {
         let car_pos = transform.translation.xy();
         let car_forward = transform.up().xy().normalize();
         let car_speed = velocity.length();
-        state_dev.update(car_speed, car_pos, car_forward);
+        let engine_rpm = vehicle_state.drive_axle_angular_velocity * 60.0 / (2.0 * std::f32::consts::PI); // Convert from rad/s to RPM
+        state_dev.update(car_speed, car_pos, car_forward, engine_rpm);
     }
 }
