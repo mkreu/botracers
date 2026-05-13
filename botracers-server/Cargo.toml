@@ -10,10 +10,13 @@ path = "src/main.rs"
 [dependencies]
 axum = { version = "0.8", features = ["json", "form"] }
 base64 = "0.22"
-chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+chrono = { version = "0.4", default-features = false, features = [
+  "clock",
+  "std",
+] }
 hex = "0.4"
-rand = "0.9"
-rusqlite = { version = "0.32", features = ["bundled"] }
+rand = "0.10"
+rusqlite = { version = "0.39", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
 tower-http = { version = "0.6", features = ["cors", "trace", "fs"] }

@@ -1,5 +1,11 @@
 [workspace]
-members = ["botracers-game", "emulator", "botracers-protocol", "botracers-server", "botracers-bot-sdk"]
+members = [
+  "botracers-game",
+  "emulator",
+  "botracers-protocol",
+  "botracers-server",
+  "botracers-bot-sdk",
+]
 resolver = "3"
 exclude = ["bot"]
 

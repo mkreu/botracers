@@ -12,13 +12,13 @@ name = "botracers-track-editor"
 path = "src/bin/editor.rs"
 
 [dependencies]
-avian2d = "0.5.0"
+avian2d = "0.6"
 bevy = { version = "0.18", default-features = false, features = ["2d"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-toml = "0.8"
-rfd = "0.15"
-ehttp = { version = "0.6", features = ["json"] }
+toml = "1.1"
+rfd = "0.17"
+ehttp = { version = "0.7", features = ["json"] }
 base64 = "0.22"
 wasm-bindgen-futures = "0.4"
 
