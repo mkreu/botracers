@@ -272,7 +272,7 @@ fn web_fetch_login(
     queue: Arc<Mutex<Vec<WebApiEvent>>>,
 ) {
     let url = web_api_url(server_url, "/api/v1/auth/login");
-    let request = match ehttp::Request::json(
+    let request = match ehttp::Request::post_json(
         url,
         &LoginRequest {
             username: username.to_string(),
@@ -343,7 +343,7 @@ fn web_upload_artifact(
     queue: Arc<Mutex<Vec<WebApiEvent>>>,
 ) {
     let url = web_api_url(server_url, "/api/v1/artifacts");
-    let mut request = match ehttp::Request::json(
+    let mut request = match ehttp::Request::post_json(
         url,
         &UploadArtifactRequest {
             name,
@@ -363,7 +363,6 @@ fn web_upload_artifact(
             return;
         }
     };
-    request.method = "POST".to_string();
     #[cfg(not(target_arch = "wasm32"))]
     let token = _token;
     #[cfg(target_arch = "wasm32")]
@@ -394,8 +393,7 @@ fn web_delete_artifact(
     queue: Arc<Mutex<Vec<WebApiEvent>>>,
 ) {
     let url = web_api_url(server_url, &format!("/api/v1/artifacts/{artifact_id}"));
-    let mut request = ehttp::Request::get(url);
-    request.method = "DELETE".to_string();
+    let mut request = ehttp::Request::delete(&url);
     #[cfg(not(target_arch = "wasm32"))]
     let token = _token;
     #[cfg(target_arch = "wasm32")]
@@ -437,7 +435,7 @@ fn web_set_artifact_visibility(
         &format!("/api/v1/artifacts/{artifact_id}/visibility"),
     );
     let mut request =
-        match ehttp::Request::json(url, &UpdateArtifactVisibilityRequest { is_public }) {
+        match ehttp::Request::post_json(url, &UpdateArtifactVisibilityRequest { is_public }) {
             Ok(req) => req,
             Err(err) => {
                 push_web_event(
@@ -451,7 +449,7 @@ fn web_set_artifact_visibility(
                 return;
             }
         };
-    request.method = "PATCH".to_string();
+    request = request.with_method(ehttp::Method::DELETE);
     #[cfg(not(target_arch = "wasm32"))]
     let token = _token;
     #[cfg(target_arch = "wasm32")]

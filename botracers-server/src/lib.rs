@@ -22,7 +22,7 @@ use botracers_protocol::{
     UploadArtifactResponse, UserInfo,
 };
 use chrono::Utc;
-use rand::Rng;
+use rand::RngExt;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::Deserialize;
 use tokio::sync::Mutex;
