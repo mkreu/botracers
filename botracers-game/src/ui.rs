@@ -3,9 +3,9 @@ use bevy::prelude::*;
 use crate::bootstrap::WebPortalState;
 use crate::game_api::{DriverType, SpawnCarRequest, WebApiCommand};
 use crate::race_runtime::{
-    CarLabel, CpuFrequencySetting, DebugGizmos, FollowCar, LongitudinalDebugData, RaceManager,
-    SimState,
+    CarLabel, CpuFrequencySetting, FollowCar, LongitudinalDebugData, RaceManager, SimState,
 };
+use botracers_game::DebugGizmos;
 
 pub struct BootstrapUiPlugin;
 

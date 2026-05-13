@@ -10,13 +10,11 @@ use bevy::{
 use emulator::bevy::{CpuComponent, cpu_system};
 use emulator::cpu::LogDevice;
 
-use botracers_game::Car;
-use botracers_game::devices::TrackRadarBorders;
-use botracers_game::devices::{
-    self, CarControlsDevice, CarRadarDevice, CarStateDevice, SplineDevice, TrackRadarDevice,
-};
+use botracers_game::DebugGizmos;
+use botracers_game::devices::{self, CarControlsDevice, CarRadarDevice, CarStateDevice};
 use botracers_game::track;
 use botracers_game::track_format::TrackFile;
+use botracers_game::{Car, devices::CarVisionDevice};
 
 use crate::game_api::{DriverType, SpawnResolvedCarRequest};
 
@@ -53,7 +51,7 @@ impl Plugin for RaceRuntimePlugin {
                 (
                     devices::car_state_system.in_set(CpuSystems::PreCpu),
                     devices::car_radar_system.in_set(CpuSystems::PreCpu),
-                    devices::track_radar_system.in_set(CpuSystems::PreCpu),
+                    devices::car_vision_system.in_set(CpuSystems::PreCpu),
                     cpu_system::<RacingCpuConfig>.in_set(CpuSystems::Cpu),
                     devices::car_controls_system.in_set(CpuSystems::PostCpu),
                 )
@@ -155,9 +153,6 @@ impl CpuFrequencySetting {
 pub struct CarLabel {
     pub name: String,
 }
-
-#[derive(Component)]
-pub struct DebugGizmos;
 
 #[derive(Component, Default, Clone)]
 pub struct LongitudinalDebugData {
@@ -351,11 +346,6 @@ fn setup_track(
     commands.insert_resource(track::TrackSpline {
         spline: spline.clone(),
     });
-    let (inner_border, outer_border) = track::sample_track_borders(&spline, track_width, 1000);
-    commands.insert_resource(TrackRadarBorders {
-        inner: inner_border,
-        outer: outer_border,
-    });
 
     let track_mesh = track::create_track_mesh(&spline, track_width, 1000);
     commands.spawn((
@@ -395,7 +385,8 @@ fn smoothstep(edge0: f32, edge1: f32, value: f32) -> f32 {
 }
 
 fn engine_torque_full(rpm: f32, params: &KartLongitudinalParams) -> f32 {
-    let x = ((rpm - params.torque_peak_rpm) / (params.redline_rpm - params.torque_peak_rpm)).clamp(0.0, 1.0);
+    let x = ((rpm - params.torque_peak_rpm) / (params.redline_rpm - params.torque_peak_rpm))
+        .clamp(0.0, 1.0);
     params.torque_peak_nm * (1.0 - (1.0 - params.redline_torque_fraction) * x * x)
 }
 
@@ -476,7 +467,6 @@ fn handle_spawn_resolved_event(
     mut events: MessageReader<SpawnResolvedCarRequest>,
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    track_spline: Res<track::TrackSpline>,
     mut manager: ResMut<RaceManager>,
     cpu_frequency: Res<CpuFrequencySetting>,
     state: Res<State<SimState>>,
@@ -489,7 +479,6 @@ fn handle_spawn_resolved_event(
         spawn_car_entry(
             &mut commands,
             &asset_server,
-            &track_spline,
             &mut manager,
             &cpu_frequency,
             event.driver.clone(),
@@ -501,7 +490,6 @@ fn handle_spawn_resolved_event(
 fn spawn_car_entry(
     commands: &mut Commands,
     asset_server: &AssetServer,
-    track_spline: &track::TrackSpline,
     manager: &mut RaceManager,
     cpu_frequency: &CpuFrequencySetting,
     driver: DriverType,
@@ -520,7 +508,6 @@ fn spawn_car_entry(
         commands,
         asset_server,
         position,
-        track_spline,
         &car_name,
         elf_bytes,
         cpu_frequency.instructions_per_update(),
@@ -538,7 +525,6 @@ fn spawn_car(
     commands: &mut Commands,
     asset_server: &AssetServer,
     position: Vec2,
-    track_spline: &track::TrackSpline,
     name: &str,
     bot_elf: &[u8],
     instructions_per_update: u32,
@@ -573,8 +559,7 @@ fn spawn_car(
         LogDevice::default(),
         CarStateDevice::default(),
         CarControlsDevice::default(),
-        SplineDevice::new(track_spline),
-        TrackRadarDevice::default(),
+        CarVisionDevice::default(),
         CarRadarDevice::default(),
     ));
 
@@ -650,9 +635,8 @@ emulator::define_cpu_config! {
         1 => LogDevice,
         2 => CarStateDevice,
         3 => CarControlsDevice,
-        4 => SplineDevice,
-        5 => TrackRadarDevice,
-        6 => CarRadarDevice,
+        4 => CarVisionDevice,
+        5 => CarRadarDevice,
     }
 }
 

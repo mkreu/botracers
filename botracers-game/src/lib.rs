@@ -4,6 +4,10 @@ pub mod devices;
 pub mod track;
 pub mod track_format;
 
+/// Marker component — when present on a car entity, debug gizmos are drawn for that car.
+#[derive(Component)]
+pub struct DebugGizmos;
+
 #[derive(Component)]
 pub struct Car {
     pub steer: f32,
