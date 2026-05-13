@@ -42,113 +42,76 @@ impl CarControls {
     }
 }
 
+/// SLOT2 (0x200) — car state, read-only.
+///
+/// Layout:
+///   0x00: speed (m/s)
 pub struct CarState {
     speed: *const f32,
-    position_x: *const f32,
-    position_y: *const f32,
-    forward_x: *const f32,
-    forward_y: *const f32,
 }
 
 impl CarState {
     pub const fn bind(slot: usize) -> Self {
         Self {
             speed: (slot + 0x00) as *const f32,
-            position_x: (slot + 0x04) as *const f32,
-            position_y: (slot + 0x08) as *const f32,
-            forward_x: (slot + 0x0C) as *const f32,
-            forward_y: (slot + 0x10) as *const f32,
         }
     }
     pub fn speed(&self) -> f32 {
         unsafe { ptr::read_volatile(self.speed) }
     }
-    pub fn position(&self) -> Vec2 {
-        unsafe {
-            Vec2::new(
-                ptr::read_volatile(self.position_x),
-                ptr::read_volatile(self.position_y),
-            )
-        }
-    }
-    pub fn forward(&self) -> Vec2 {
-        unsafe {
-            Vec2::new(
-                ptr::read_volatile(self.forward_x),
-                ptr::read_volatile(self.forward_y),
-            )
-        }
-    }
 }
 
-pub struct SplineQuery {
-    t: *mut f32,
-    x: *const f32,
-    y: *const f32,
-    t_max: *const f32,
+/// SLOT4 (0x400) — track vision.
+///
+/// Protocol: bot writes desired lookahead in metres (0..=50) to offset 0x08,
+/// then reads the pre-cached curvature at that distance from offset 0x0C.
+/// Fractional lookahead values are rounded to the nearest integer metre.
+///
+/// Layout:
+///   0x00: lateral offset to track centreline (m, positive = left of centre)  [read]
+///   0x04: heading angle relative to track tangent (rad, positive = heading left) [read]
+///   0x08: lookahead request (m, write; rounded to nearest metre, clamped to [0, 50]) [write]
+///   0x0C: curvature response (rad/m, positive = left turn) [read]
+pub struct CarVision {
+    offset: *const f32,
+    angle: *const f32,
+    lookahead_request: *mut f32,
+    curvature_response: *const f32,
 }
 
-impl SplineQuery {
+impl CarVision {
     pub const fn bind(slot: usize) -> Self {
         Self {
-            t: (slot + 0x00) as *mut f32,
-            x: (slot + 0x04) as *const f32,
-            y: (slot + 0x08) as *const f32,
-            t_max: (slot + 0x0C) as *const f32,
+            offset: (slot + 0x00) as *const f32,
+            angle: (slot + 0x04) as *const f32,
+            lookahead_request: (slot + 0x08) as *mut f32,
+            curvature_response: (slot + 0x0C) as *const f32,
         }
     }
 
-    pub fn query(&mut self, t: f32) -> Vec2 {
+    /// Lateral offset to track centreline in metres.
+    /// Positive = car is left of centre, negative = right.
+    pub fn offset(&self) -> f32 {
+        unsafe { ptr::read_volatile(self.offset) }
+    }
+
+    /// Car heading angle relative to the track tangent in radians.
+    /// Positive = heading left of tangent.
+    pub fn angle(&self) -> f32 {
+        unsafe { ptr::read_volatile(self.angle) }
+    }
+
+    /// Query the signed curvature (rad/m) at `lookahead_m` metres ahead along
+    /// the track centreline. Positive = left turn.
+    ///
+    /// Writes `lookahead_m` to the device's request register, then reads back
+    /// the pre-cached curvature. Values are rounded to the nearest integer metre
+    /// and clamped to [0, 50].
+    pub fn curvature_at(&mut self, lookahead_m: f32) -> f32 {
         unsafe {
-            ptr::write_volatile(self.t, t);
-            Vec2::new(ptr::read_volatile(self.x), ptr::read_volatile(self.y))
+            ptr::write_volatile(self.lookahead_request, lookahead_m);
+            ptr::read_volatile(self.curvature_response)
         }
-    }
-
-    pub fn t_max(&self) -> f32 {
-        unsafe { ptr::read_volatile(self.t_max) }
-    }
-}
-
-pub struct TrackRadar {
-    distances: [*const f32; 7],
-}
-
-impl TrackRadar {
-    pub const fn bind(slot: usize) -> Self {
-        Self {
-            distances: [
-                (slot + 0x00) as *const f32,
-                (slot + 0x04) as *const f32,
-                (slot + 0x08) as *const f32,
-                (slot + 0x0C) as *const f32,
-                (slot + 0x10) as *const f32,
-                (slot + 0x14) as *const f32,
-                (slot + 0x18) as *const f32,
-            ],
-        }
-    }
-
-    pub fn distances(&self) -> [f32; 7] {
-        unsafe {
-            [
-                ptr::read_volatile(self.distances[0]),
-                ptr::read_volatile(self.distances[1]),
-                ptr::read_volatile(self.distances[2]),
-                ptr::read_volatile(self.distances[3]),
-                ptr::read_volatile(self.distances[4]),
-                ptr::read_volatile(self.distances[5]),
-                ptr::read_volatile(self.distances[6]),
-            ]
-        }
-    }
-
-    pub fn distance(&self, index: usize) -> f32 {
-        if index >= self.distances.len() {
-            return f32::NAN;
-        }
-
-        unsafe { ptr::read_volatile(self.distances[index]) }
     }
 }
 

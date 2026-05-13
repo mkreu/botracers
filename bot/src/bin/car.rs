@@ -1,10 +1,10 @@
 #![no_std]
 #![no_main]
 
-use core::{f32::consts::PI, fmt::Write};
+use core::fmt::Write;
 
 use botracers_bot_sdk::{
-    driving::{CarControls, CarState, SplineQuery},
+    driving::{CarControls, CarState, CarVision},
     log, SLOT2, SLOT3, SLOT4,
 };
 
@@ -12,81 +12,37 @@ use botracers_bot_sdk::{
 fn main() -> ! {
     writeln!(log(), "Car OS starting up...").ok();
 
-    let car_state = CarState::bind(SLOT2);
-    let mut car_controls = CarControls::bind(SLOT3);
-    let mut spline = SplineQuery::bind(SLOT4);
-
-    // Read t_max once at startup
-    spline.query(0.0);
-    let t_max = spline.t_max();
-
-    // Track our position along the spline
-    let mut target_t = 0.0;
+    let state = CarState::bind(SLOT2);
+    let mut controls = CarControls::bind(SLOT3);
+    let mut vision = CarVision::bind(SLOT4);
 
     loop {
-        let car_pos = car_state.position();
-        let car_forward = car_state.forward();
-        let car_speed = car_state.speed();
+        let speed = state.speed();
+        let offset = vision.offset();
+        let angle = vision.angle();
 
-        // Search a small window around current target_t to find where we actually are
-        let mut best_t = target_t;
-        let mut best_score = f32::MAX;
+        // Steering feed-forward: blend immediate curvature with a short fixed
+        // lookahead (10 m) — close enough to be reactive, far enough to be smooth.
+        let curv_now = vision.curvature_at(0.0);
+        let curv_near = vision.curvature_at(10.0);
 
-        let window_samples = 50;
-        let window_size = t_max * 0.1; // Search +/- 10% of track
-        for i in 0..window_samples {
-            let offset = (i as f32 / window_samples as f32) * window_size - window_size * 0.5;
-            let test_t = (target_t + offset + t_max) % t_max;
-            let test_pos = spline.query(test_t);
-            let dist = car_pos.distance(test_pos);
+        let centering = offset * 0.04;
+        let heading_correction = angle * 0.5;
+        let feedforward = -(curv_now * 0.4 + curv_near * 0.6) * speed * 0.5;
+        let steer = (centering + heading_correction + feedforward).clamp(-1.0, 1.0);
+        controls.set_steering(steer);
 
-            // Prefer points ahead (positive offset) over points behind
-            let forward_bias = if offset > 0.0 { 0.0 } else { 2.0 };
-            let score = dist + forward_bias;
-
-            if score < best_score {
-                best_score = score;
-                best_t = test_t;
-            }
-        }
-
-        // Dynamic lookahead based on speed
-        let base_lookahead = 2.0;
-        let speed_factor = (car_speed * 0.5).max(1.0);
-        let lookahead_distance = base_lookahead * speed_factor;
-
-        let mut current_t = best_t;
-        let mut traveled = 0.0;
-
-        // Walk along the spline until we've traveled lookahead_distance
-        while traveled < lookahead_distance {
-            let step = t_max / 2000.0; // Smaller steps for smoother distance calculation
-            let next_t = (current_t + step) % t_max;
-            let p1 = spline.query(current_t);
-            let p2 = spline.query(next_t);
-            traveled += p1.distance(p2);
-            current_t = next_t;
-        }
-
-        target_t = current_t;
-
-        let target_pos = spline.query(target_t);
-
-        // Calculate steering to target
-        let to_target = (target_pos - car_pos).normalize();
-        let angle_to_target = car_forward.angle_to(to_target);
-
-        // Smooth proportional steering with lower gain
-        // Negate because physics uses -car.steer
-        let max_steer = PI / 6.0;
-        let desired_steer = (-angle_to_target * 0.8).clamp(-max_steer, max_steer);
-        let steer_blend = 0.1; // How quickly to change steering (lower = smoother)
-        car_controls.set_steering(
-            car_controls.steering() * (1.0 - steer_blend) + desired_steer * steer_blend,
-        );
-
-        // Straight or gentle curve - full throttle
-        car_controls.set_accelerator(1.0 * 0.1);
-        car_controls.set_brake(0.0);
+        // Braking: speed-adaptive lookahead so we look further ahead the faster
+        // we go (roughly reaction-distance scaling).  Clamped to [5, 35] m so
+        // we don't overcorrect at low speed or look too far at high speed.
+        let brake_lookahead = (speed * 1.2).clamp(5.0, 35.0);
+        let curv_brake = vision.curvature_at(brake_lookahead);
+        let brake = if curv_brake.abs() > 0.02 && speed > 20.0 {
+            ((curv_brake.abs() - 0.02) * 50.0).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        controls.set_brake(brake);
+        controls.set_accelerator(if brake < 0.5 { 1.0 } else { 0.0 });
     }
 }

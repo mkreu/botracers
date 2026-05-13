@@ -78,23 +78,21 @@ pub trait Device: Send + Sync {
 | `0x100–0x1FF`   | 0           | LogDevice       |
 | `0x200–0x2FF`   | 1           | CarStateDevice  |
 | `0x300–0x3FF`   | 2           | CarControlsDevice |
-| `0x400–0x4FF`   | 3           | SplineDevice    |
-| `0x500–0x5FF`   | 4           | TrackRadarDevice |
-| `0x600–0x6FF`   | 5           | CarRadarDevice  |
+| `0x400–0x4FF`   | 3           | CarVisionDevice |
+| `0x500–0x5FF`   | 4           | CarRadarDevice  |
 | `≥ 0x1000`      | —           | DRAM            |
 
 Devices receive **offset-relative addresses** (i.e., `addr & 0xFF`), not absolute addresses.
 
-**Device ECS access** — Query device components directly from Bevy systems (e.g. `Query<(&mut CarStateDevice, &mut TrackRadarDevice)>`). Do not store devices in `CpuComponent`.
+**Device ECS access** — Query device components directly from Bevy systems (e.g. `Query<(&mut CarStateDevice, &mut CarVisionDevice)>`). Do not store devices in `CpuComponent`.
 
 ### `bot/` — RISC-V Bot Programs
 
 - Target: `riscv32imafc-unknown-none-elf` (configured in `bot/.cargo/config.toml`)
 - Linker script `link.x` places `.text` at `0x1000` (start of DRAM)
-- Depends on `botracers-bot-sdk` for slot constants, MMIO bindings (`CarState`, `CarControls`, `SplineQuery`, `TrackRadar`, `CarRadar`), log writer, and default runtime (`panic-handler` + `global-allocator` features)
+- Depends on `botracers-bot-sdk` for slot constants, MMIO bindings (`CarState`, `CarControls`, `CarVision`, `CarRadar`), log writer, and default runtime (`panic-handler` + `global-allocator` features)
 - `.cargo/config.toml` and local `link.x` stay in each bot repo; target/linker wiring is crate-local on stable Rust
-- `bin/car.rs` — The car AI: infinite loop reading state, querying spline, computing steering/braking, writing controls
-- `bin/car_radar.rs` — Radar-only car AI using `TrackRadar` (no spline-following dependency)
+- `bin/car.rs` — Vision-based car AI: reads `CarVision` (offset, angle, curvatures) and `CarState` (speed) to compute steering and braking
 - `bin/bottles.rs` — Test program (99 bottles of beer via log device)
 
 ### `botracers-bot-sdk/` — Shared Bot Runtime + MMIO API
@@ -108,13 +106,9 @@ Devices receive **offset-relative addresses** (i.e., `addr & 0xFF`), not absolut
 - Consumers can disable runtime features to provide custom panic/allocator implementations
 
 **CarState layout** (SLOT2, 0x200, read by bot):
-| Offset | Field       | Type |
-|--------|-------------|------|
-| 0x00   | speed       | f32  |
-| 0x04   | position_x  | f32  |
-| 0x08   | position_y  | f32  |
-| 0x0C   | forward_x   | f32  |
-| 0x10   | forward_y   | f32  |
+| Offset | Field | Type |
+|--------|-------|------|
+| 0x00   | speed | f32  |
 
 **CarControls layout** (SLOT3, 0x300, written by bot):
 | Offset | Field       | Type |
@@ -123,30 +117,17 @@ Devices receive **offset-relative addresses** (i.e., `addr & 0xFF`), not absolut
 | 0x04   | brake       | f32  |
 | 0x08   | steering    | f32  |
 
-**SplineQuery layout** (SLOT4, 0x400, read/write by bot):
-| Offset | Field       | Type | Access |
-|--------|-------------|------|--------|
-| 0x00   | t           | f32  | write  |
-| 0x04   | x           | f32  | read   |
-| 0x08   | y           | f32  | read   |
-| 0x0C   | t_max       | f32  | read   |
+**CarVision layout** (SLOT4, 0x400, read/write by bot):
+| Offset | Field              | Type | Access |
+|--------|--------------------|------|--------|
+| 0x00   | offset             | f32  | read   |
+| 0x04   | angle              | f32  | read   |
+| 0x08   | lookahead_request  | f32  | write  |
+| 0x0C   | curvature_response | f32  | read   |
 
-**SplineQuery protocol**: Bot writes a `t` parameter (spline position) to offset 0x00, device evaluates the spline at that point, then bot reads the resulting x/y coordinates from offsets 0x04/0x08. The `t_max` value (domain end) is read-only.
+`offset`: lateral distance to track centreline in metres (positive = car is left of centre). `angle`: car heading relative to track tangent in radians (positive = heading left). **Curvature query protocol**: bot writes desired lookahead in metres (0..=50) to `lookahead_request`; the device immediately looks up the pre-cached signed curvature (rad/m, positive = left turn) and populates `curvature_response`. Values are rounded to the nearest integer metre. Curvature is pre-cached at 1-metre resolution for the full [0, 50] m range each tick.
 
-**TrackRadar layout** (SLOT5, 0x500, read by bot):
-| Offset | Field            | Type |
-|--------|------------------|------|
-| 0x00   | ray_0_distance   | f32  |
-| 0x04   | ray_1_distance   | f32  |
-| 0x08   | ray_2_distance   | f32  |
-| 0x0C   | ray_3_distance   | f32  |
-| 0x10   | ray_4_distance   | f32  |
-| 0x14   | ray_5_distance   | f32  |
-| 0x18   | ray_6_distance   | f32  |
-
-Rays are cast in a forward cone (currently 7 rays over 90°). Distances are nearest border-hit distances in world units; no-hit rays are encoded as `NaN`.
-
-**CarRadar layout** (SLOT6, 0x600, read by bot):
+**CarRadar layout** (SLOT5, 0x500, read by bot):
 | Offset | Field   | Type |
 |--------|---------|------|
 | 0x00   | car0_x  | f32  |
@@ -254,7 +235,7 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
 - **`ui.rs`** — Split UI plugins:
   - `BootstrapUiPlugin` (server status + artifact actions)
   - `RaceRuntimeUiPlugin` (race controls + car list + focused debug telemetry + console)
-- **`devices.rs`** — `CarStateDevice`, `CarControlsDevice`, `SplineDevice`, `TrackRadarDevice`, and `CarRadarDevice` implementing `Device` (host-side counterparts to the bot's volatile pointers and their uptate systems for bevy logic)
+- **`devices.rs`** — `CarStateDevice`, `CarControlsDevice`, `CarVisionDevice`, and `CarRadarDevice` implementing `Device` (host-side counterparts to the bot's volatile pointers and their update systems for bevy logic)
 - **`track.rs`** — `TrackSpline` resource, spline construction, track/kerb mesh generation
 - **`track_format.rs`** — TOML-based track file format (`TrackFile`)
 - **`bin/editor.rs`** — Track editor tool
@@ -274,7 +255,7 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
 - `Car` — steering/inputs plus drivetrain state (`engine_rpm`, `wheel_omega`) used by physics
 - `EmulatorDriver` — marker component for RISC-V-emulator-driven cars
 - `CpuComponent` (from emulator crate) — attached to emulator-driven cars
-- `LogDevice`, `CarStateDevice`, `CarControlsDevice`, `SplineDevice`, `TrackRadarDevice`, `CarRadarDevice` — MMIO device components attached to emulator-driven cars
+- `LogDevice`, `CarStateDevice`, `CarControlsDevice`, `CarVisionDevice`, `CarRadarDevice` — MMIO device components attached to emulator-driven cars
 - `CarLabel` — name label for each car
 - `DebugGizmos` — marker; when present on a car, debug gizmos are drawn (off by default)
 - `LongitudinalDebugData` — per-car telemetry snapshot for drivetrain/longitudinal force debugging
@@ -302,10 +283,10 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
     - runtime (`handle_spawn_resolved_event`, `apply_cpu_frequency_setting`, `handle_car_input`)
     - UI systems (bootstrap + race runtime panels, including followed-car drivetrain telemetry when gizmos are enabled), `update_camera`, `draw_gizmos`, `update_fps_counter`
 3. `FixedUpdate` (in order, only in `Racing` state):
-    - `update_car_state_device` — writes physics state (position, velocity, forward direction) into `CarStateDevice` (**before** CPU execution system)
-    - `update_track_radar_device` — updates `TrackRadarDevice` border ray distances (**before** CPU execution system)
+    - `update_car_state_device` — writes car speed into `CarStateDevice` (**before** CPU execution system)
+    - `update_car_vision_device` — computes lateral offset, heading angle, and curvature lookaheads and writes them into `CarVisionDevice` (**before** CPU execution system)
     - `update_car_radar_device` — updates `CarRadarDevice` nearest-car absolute positions (**before** CPU execution system)
-    - CPU execution system (`cpu_system::<YourCpuConfig>`) — runs N RISC-V instructions per tick; bot queries `SplineDevice` and computes controls
+    - CPU execution system (`cpu_system::<YourCpuConfig>`) — runs N RISC-V instructions per tick; bot reads `CarVisionDevice` and computes controls
    - `apply_emulator_controls` — reads `CarControlsDevice` → `Car` (**after** CPU execution system)
    - `apply_car_forces` — applies `Car` state to physics forces
 
@@ -314,7 +295,7 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
 2. Bootstrap downloads ELF artifact and emits `SpawnResolvedCarRequest`.
 3. Runtime consumes resolved spawn and instantiates the car (PreRace-gated).
 
-Cars can only be added/removed in `PreRace` state. Each emulator car gets its own isolated CPU (`CpuComponent`) and isolated MMIO device components; each car has its own `SplineDevice` with a cloned copy of the track spline.
+Cars can only be added/removed in `PreRace` state. Each emulator car gets its own isolated CPU (`CpuComponent`) and isolated MMIO device components.
 
 **Camera** — Free camera by default (no cars spawned at startup). Middle/right-mouse drag to pan, scroll to zoom. When a car is selected via the UI "follow" button, the camera snaps to it; clicking again unfollows.
 
@@ -324,9 +305,9 @@ Cars can only be added/removed in `PreRace` state. Each emulator car gets its ow
 
 0. **No compatibility stubs unless requested** — When refactoring APIs, do not keep unused backward-compatibility code paths, deprecated wrappers, or dead shim layers unless explicitly requested. Prefer deleting old forms and updating all call sites.
 
-1. **Emulator is use-case agnostic** — Car-specific devices (`CarStateDevice`, `CarControlsDevice`, `SplineDevice`) live in `botracers-game/`, not in `emulator/`. The emulator only provides `Device`, `Mmu`, `LogDevice` (buffered), `CpuComponent`, and the plugin.
+1. **Emulator is use-case agnostic** — Car-specific devices (`CarStateDevice`, `CarControlsDevice`, `CarVisionDevice`, `CarRadarDevice`) live in `botracers-game/`, not in `emulator/`. The emulator only provides `Device`, `Mmu`, `LogDevice` (buffered), `CpuComponent`, and the plugin.
 
-2. **Each emulator car is fully isolated** — Separate `Hart`, `Dram`, and device-component instances per car entity. No shared state between emulator instances. Each car has its own `SplineDevice` with a cloned copy of the track spline.
+2. **Each emulator car is fully isolated** — Separate `Hart`, `Dram`, and device-component instances per car entity. No shared state between emulator instances.
 
 3. **Device addressing** — The `Mmu` strips the high bits and passes offset-relative addresses (`addr & 0xFF`) to devices. Devices don't need to know their absolute slot address.
 
@@ -334,7 +315,7 @@ Cars can only be added/removed in `PreRace` state. Each emulator car gets its ow
 
 5. **Instruction budget matters** — The `instructions_per_update` value is derived from a global UI preset (`hz / 200`, default `2 MHz => 10000`) and must be high enough for each bot loop iteration to make progress, but low enough to avoid burning host CPU.
 
-6. **Spline logic is bot-side** — The bot implements full autonomous navigation (window search, dynamic lookahead, spline walking, curvature-based braking) using the `SplineDevice` query interface. The engine only provides basic physics state; all pathfinding intelligence runs in emulated RISC-V code.
+6. **Track vision is host-side** — The host computes lateral offset, heading angle, and multi-distance curvature lookaheads and exposes them read-only via `CarVisionDevice`. The bot reads these values directly and implements its own steering/braking policy in emulated RISC-V code.
 
 7. **Strict compressed decode** — Compressed instruction decode is intentionally strict RV32C(+Zcf). Illegal encodings must trap/panic; do not add permissive fallbacks.
 

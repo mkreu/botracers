@@ -9,34 +9,58 @@ use crate::track::TrackSpline;
 /// Memory-mapped device that provides car / track vision to the RISC-V bot.
 ///
 /// Layout (all f32, little-endian):
-///   0x00: lateral offset to track centerline
-///   0x04: angle to track centerline
+///   0x00: lateral offset to track centreline (m, positive = left of centre)  [read]
+///   0x04: angle to track tangent (rad, positive = heading left)              [read]
+///   0x08: lookahead request (m, write; rounded to nearest metre, clamped to [0, 50]) [write]
+///   0x0C: curvature response (rad/m, positive = left turn)                   [read]
 ///
+/// Protocol: bot writes desired lookahead in metres to 0x08; the device
+/// immediately looks up the pre-cached curvature and populates 0x0C.
+/// Curvature is pre-cached at 1-metre resolution for lookaheads 0..=50 m.
 #[derive(Component)]
 pub struct CarVisionDevice {
-    data: [u8; MEM_SIZE], // 5 × f32
+    /// 4 × f32 registers: [offset, angle, lookahead_req, curvature_resp]
+    regs: [u8; 16],
+    /// Pre-cached signed curvature at 1 m resolution; index = metres ahead (0..=50)
+    curvature_cache: [f32; 51],
 }
-
-const MEM_SIZE: usize = 4 * 2;
 
 impl Default for CarVisionDevice {
     fn default() -> Self {
         Self {
-            data: [0u8; MEM_SIZE],
+            regs: [0u8; 16],
+            curvature_cache: [0.0f32; 51],
         }
     }
 }
 
 impl CarVisionDevice {
-    fn write_f32(&mut self, offset: usize, value: f32) {
-        let bytes = value.to_le_bytes();
-        self.data[offset..offset + 4].copy_from_slice(&bytes);
+    fn write_reg_f32(&mut self, offset: usize, value: f32) {
+        self.regs[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+    }
+
+    fn read_reg_f32(&self, offset: usize) -> f32 {
+        f32::from_le_bytes(self.regs[offset..offset + 4].try_into().unwrap())
+    }
+
+    fn lookup_curvature(&self, lookahead_m: f32) -> f32 {
+        if lookahead_m.is_nan() {
+            return 0.0;
+        }
+        let idx = lookahead_m.round().clamp(0.0, 50.0) as usize;
+        self.curvature_cache[idx]
     }
 
     /// Write the full vision state from the simulation.
-    pub fn update(&mut self, offset: f32, angle: f32) {
-        self.write_f32(0x00, offset);
-        self.write_f32(0x04, angle);
+    /// Also refreshes the curvature response for the current lookahead request.
+    pub fn update(&mut self, offset: f32, angle: f32, curvature_cache: [f32; 51]) {
+        self.write_reg_f32(0x00, offset);
+        self.write_reg_f32(0x04, angle);
+        self.curvature_cache = curvature_cache;
+        // Re-evaluate the response in case the cache changed under the existing request.
+        let req = self.read_reg_f32(0x08);
+        let curv = self.lookup_curvature(req);
+        self.write_reg_f32(0x0C, curv);
     }
 }
 
@@ -44,26 +68,20 @@ impl Device for CarVisionDevice {
     fn load(&self, addr: u32, size: u32) -> Result<u32, ()> {
         let addr = addr as usize;
         match size {
-            8 => {
-                if addr < self.data.len() {
-                    Ok(self.data[addr] as u32)
-                } else {
-                    Ok(0)
-                }
-            }
+            8 => Ok(self.regs.get(addr).copied().unwrap_or(0) as u32),
             16 => {
-                if addr + 1 < self.data.len() {
-                    Ok((self.data[addr] as u32) | ((self.data[addr + 1] as u32) << 8))
+                if addr + 1 < self.regs.len() {
+                    Ok((self.regs[addr] as u32) | ((self.regs[addr + 1] as u32) << 8))
                 } else {
                     Ok(0)
                 }
             }
             32 => {
-                if addr + 3 < self.data.len() {
-                    Ok((self.data[addr] as u32)
-                        | ((self.data[addr + 1] as u32) << 8)
-                        | ((self.data[addr + 2] as u32) << 16)
-                        | ((self.data[addr + 3] as u32) << 24))
+                if addr + 3 < self.regs.len() {
+                    Ok((self.regs[addr] as u32)
+                        | ((self.regs[addr + 1] as u32) << 8)
+                        | ((self.regs[addr + 2] as u32) << 16)
+                        | ((self.regs[addr + 3] as u32) << 24))
                 } else {
                     Ok(0)
                 }
@@ -72,8 +90,14 @@ impl Device for CarVisionDevice {
         }
     }
 
-    fn store(&mut self, _addr: u32, _size: u32, _value: u32) -> Result<(), ()> {
-        // CarVision is read-only from the bot's perspective; silently ignore writes
+    fn store(&mut self, addr: u32, size: u32, value: u32) -> Result<(), ()> {
+        // Only 32-bit writes to the lookahead request register are meaningful.
+        if size == 32 && addr == 0x08 {
+            let lookahead_m = f32::from_bits(value);
+            let curv = self.lookup_curvature(lookahead_m);
+            self.write_reg_f32(0x08, lookahead_m);
+            self.write_reg_f32(0x0C, curv);
+        }
         Ok(())
     }
 }
@@ -143,11 +167,56 @@ pub fn system(
         // Signed angle from track tangent to car heading (radians).
         let angle = tangent.angle_to(car_forward);
 
+        // Pre-cache curvature at 1 m resolution for 0..=50 m ahead.
+        // Walk forward incrementally from best_t; breaking at 50 m is always
+        // fast (~50 iterations on a typical track with 2000 t-steps per lap).
+        let walk_step = t_max / 2000.0;
+        let mut walk_t = best_t;
+        let mut walk_prev = spline.position(walk_t);
+        let mut walk_arc = 0.0f32;
+
+        let mut curvature_cache = [0.0f32; 51];
+        curvature_cache[0] = signed_curvature(spline, walk_t);
+
+        let mut next_m = 1usize;
+        for _ in 0..2000 {
+            if next_m > 50 {
+                break;
+            }
+            walk_t = (walk_t + walk_step).rem_euclid(t_max);
+            let pos = spline.position(walk_t);
+            walk_arc += walk_prev.distance(pos);
+            walk_prev = pos;
+            while next_m <= 50 && walk_arc >= next_m as f32 {
+                curvature_cache[next_m] = signed_curvature(spline, walk_t);
+                next_m += 1;
+            }
+        }
+        // Safety: fill any remaining entries with the last sampled value.
+        let last = curvature_cache[next_m.saturating_sub(1)];
+        for i in next_m..=50 {
+            curvature_cache[i] = last;
+        }
+
         if show_gizmos {
             // Draw the offset vector: from the closest spline point to the car position.
             gizmos.line_2d(closest, car_pos, LIGHT_CYAN);
         }
 
-        vision_dev.update(offset, angle);
+        vision_dev.update(offset, angle, curvature_cache);
     }
 }
+
+/// Signed curvature of `spline` at parameter `t`.
+/// κ = (v × a) / |v|³  — positive = left turn, negative = right turn.
+fn signed_curvature(spline: &CubicCurve<Vec2>, t: f32) -> f32 {
+    let v = spline.velocity(t);
+    let a = spline.acceleration(t);
+    let cross = v.x * a.y - v.y * a.x;
+    let speed_sq = v.length_squared();
+    if speed_sq < 1e-10 {
+        return 0.0;
+    }
+    cross / (speed_sq * speed_sq.sqrt())
+}
+
