@@ -236,8 +236,8 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
   - `BootstrapUiPlugin` (server status + artifact actions)
   - `RaceRuntimeUiPlugin` (race controls + car list + focused debug telemetry + console)
 - **`devices.rs`** — `CarStateDevice`, `CarControlsDevice`, `CarVisionDevice`, and `CarRadarDevice` implementing `Device` (host-side counterparts to the bot's volatile pointers and their update systems for bevy logic)
-- **`track.rs`** — `TrackSpline` resource, spline construction, track/kerb mesh generation
-- **`track_format.rs`** — TOML-based track file format (`TrackFile`)
+- **`track.rs`** — `TrackSpline` resource, spline construction, track/kerb mesh generation, shared barrier segment/mesh/texture helpers
+- **`track_format.rs`** — TOML-based track file format (`TrackFile`) including defaulted open-polyline `barriers`
 - **`bin/editor.rs`** — Track editor tool
 - Web API integration in `bootstrap.rs`/`ui.rs` supports:
   - capability checks against `botracers-server`
@@ -296,6 +296,8 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
 3. Runtime consumes resolved spawn and instantiates the car (PreRace-gated).
 
 Cars can only be added/removed in `PreRace` state. Each emulator car gets its own isolated CPU (`CpuComponent`) and isolated MMIO device components.
+
+**Track barriers** — Track TOML files may include `[[barriers]]` open polylines in world-space metres. Runtime expands each valid point pair into one textured tire-strip mesh plus one static rectangular Avian collider, using shared helpers from `track.rs`; editor Barrier mode (`B`) uses the same segment generation for previews.
 
 **Camera** — Free camera by default (no cars spawned at startup). Middle/right-mouse drag to pan, scroll to zoom. When a car is selected via the UI "follow" button, the camera snaps to it; clicking again unfollows.
 

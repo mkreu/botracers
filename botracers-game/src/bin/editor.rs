@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use bevy::{color::palettes::css, input::mouse::MouseWheel, prelude::*, window::PrimaryWindow};
 
 use botracers_game::track::{self, TrackSpline};
-use botracers_game::track_format::TrackFile;
+use botracers_game::track_format::{TrackBarrier, TrackFile};
 
 // ---------------------------------------------------------------------------
 // Main
@@ -45,14 +45,17 @@ fn main() {
 struct EditorState {
     track_file: TrackFile,
     file_path: Option<PathBuf>,
-    selected_point: Option<usize>,
+    selected_track_point: Option<usize>,
+    selected_barrier_point: Option<(usize, usize)>,
+    active_barrier: Option<usize>,
+    mode: EditMode,
     dragging: bool,
     /// Last cursor position in world coords while dragging (for deltas).
     drag_prev_world: Option<Vec2>,
-    /// Undo stack: snapshots of control_points *before* a modification.
-    undo_stack: Vec<Vec<[f32; 2]>>,
-    /// Redo stack: snapshots popped from undo.
-    redo_stack: Vec<Vec<[f32; 2]>>,
+    /// Undo stack: full track snapshots before a modification.
+    undo_stack: Vec<TrackFile>,
+    /// Redo stack: full track snapshots popped from undo.
+    redo_stack: Vec<TrackFile>,
     /// Ruler start in world coords (Shift+LMB).
     ruler_start: Option<Vec2>,
     ruler_end: Option<Vec2>,
@@ -67,6 +70,21 @@ struct EditorState {
     show_help: bool,
     /// Dirty flag — unsaved changes.
     dirty: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EditMode {
+    Track,
+    Barrier,
+}
+
+impl EditMode {
+    fn label(self) -> &'static str {
+        match self {
+            EditMode::Track => "Track",
+            EditMode::Barrier => "Barrier",
+        }
+    }
 }
 
 impl EditorState {
@@ -86,7 +104,10 @@ impl EditorState {
         Self {
             track_file,
             file_path,
-            selected_point: None,
+            selected_track_point: None,
+            selected_barrier_point: None,
+            active_barrier: None,
+            mode: EditMode::Track,
             dragging: false,
             drag_prev_world: None,
             undo_stack: Vec::new(),
@@ -103,15 +124,16 @@ impl EditorState {
     }
 
     fn push_undo(&mut self) {
-        self.undo_stack.push(self.track_file.control_points.clone());
+        self.undo_stack.push(self.track_file.clone());
         self.redo_stack.clear();
         self.dirty = true;
     }
 
     fn undo(&mut self) -> bool {
         if let Some(prev) = self.undo_stack.pop() {
-            self.redo_stack.push(self.track_file.control_points.clone());
-            self.track_file.control_points = prev;
+            self.redo_stack.push(self.track_file.clone());
+            self.track_file = prev;
+            self.clear_invalid_selection();
             self.dirty = true;
             true
         } else {
@@ -121,12 +143,39 @@ impl EditorState {
 
     fn redo(&mut self) -> bool {
         if let Some(next) = self.redo_stack.pop() {
-            self.undo_stack.push(self.track_file.control_points.clone());
-            self.track_file.control_points = next;
+            self.undo_stack.push(self.track_file.clone());
+            self.track_file = next;
+            self.clear_invalid_selection();
             self.dirty = true;
             true
         } else {
             false
+        }
+    }
+
+    fn clear_invalid_selection(&mut self) {
+        if self
+            .selected_track_point
+            .is_some_and(|idx| idx >= self.track_file.control_points.len())
+        {
+            self.selected_track_point = None;
+        }
+        if self
+            .selected_barrier_point
+            .is_some_and(|(barrier_idx, point_idx)| {
+                self.track_file
+                    .barriers
+                    .get(barrier_idx)
+                    .is_none_or(|barrier| point_idx >= barrier.points.len())
+            })
+        {
+            self.selected_barrier_point = None;
+        }
+        if self
+            .active_barrier
+            .is_some_and(|idx| idx >= self.track_file.barriers.len())
+        {
+            self.active_barrier = None;
         }
     }
 }
@@ -146,6 +195,12 @@ struct TrackVisual;
 struct ControlPointVisual;
 
 #[derive(Component)]
+struct BarrierVisual;
+
+#[derive(Component)]
+struct BarrierPointVisual;
+
+#[derive(Component)]
 struct PointLabel;
 
 #[derive(Component)]
@@ -163,6 +218,7 @@ fn editor_setup(
     editor: Res<EditorState>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
+    mut images: ResMut<Assets<Image>>,
     mut rebuild: ResMut<RebuildFlag>,
 ) {
     // Camera
@@ -223,7 +279,21 @@ fn editor_setup(
         &mut meshes,
         &mut materials,
         &editor.track_file,
-        editor.selected_point,
+        editor.selected_track_point,
+    );
+    spawn_barrier_visuals(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        &mut images,
+        &editor.track_file,
+    );
+    spawn_barrier_point_visuals(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        &editor.track_file,
+        editor.selected_barrier_point,
     );
 
     // Trigger initial rebuild counter
@@ -232,10 +302,13 @@ fn editor_setup(
 
 const HELP_TEXT: &str = "\
 Controls:
-  LMB          Select / drag control point
+  B            Toggle track / barrier mode
+  LMB          Select / drag point; append barrier point in Barrier mode
   Right-drag   Pan camera
   Scroll       Zoom
-  A            Add point at cursor
+  A            Add track point at cursor
+  N            Start new barrier polyline
+  Enter        Finish active barrier polyline
   Del/Bksp     Delete selected point
   Ctrl+Z       Undo
   Ctrl+Y       Redo
@@ -356,6 +429,67 @@ fn spawn_point_visuals(
             PointLabel,
             ControlPointVisual,
         ));
+    }
+}
+
+fn spawn_barrier_visuals(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<ColorMaterial>>,
+    images: &mut ResMut<Assets<Image>>,
+    track_file: &TrackFile,
+) {
+    let texture = images.add(track::create_tire_barrier_texture());
+    let material = materials.add(ColorMaterial {
+        texture: Some(texture),
+        ..default()
+    });
+
+    for barrier_idx in 0..track_file.barriers.len() {
+        let Some(points) = track_file.barrier_points_vec2(barrier_idx) else {
+            continue;
+        };
+        for segment in track::barrier_segments(&points) {
+            commands.spawn((
+                Mesh2d(meshes.add(track::create_textured_barrier_segment_mesh(
+                    segment.length,
+                    track::BARRIER_WIDTH,
+                    track::BARRIER_TEXTURE_REPEAT_LENGTH,
+                ))),
+                MeshMaterial2d(material.clone()),
+                Transform::from_xyz(segment.midpoint.x, segment.midpoint.y, 1.5)
+                    .with_rotation(Quat::from_rotation_z(segment.angle)),
+                BarrierVisual,
+            ));
+        }
+    }
+}
+
+fn spawn_barrier_point_visuals(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<ColorMaterial>>,
+    track_file: &TrackFile,
+    selected: Option<(usize, usize)>,
+) {
+    let point_radius = 0.75;
+    let normal_mat = materials.add(Color::srgba(1.0, 0.35, 0.05, 0.95));
+    let selected_mat = materials.add(Color::srgba(0.15, 0.8, 1.0, 1.0));
+    let circle_mesh = meshes.add(Circle::new(point_radius));
+
+    for (barrier_idx, barrier) in track_file.barriers.iter().enumerate() {
+        for (point_idx, &[x, y]) in barrier.points.iter().enumerate() {
+            commands.spawn((
+                Mesh2d(circle_mesh.clone()),
+                MeshMaterial2d(if selected == Some((barrier_idx, point_idx)) {
+                    selected_mat.clone()
+                } else {
+                    normal_mat.clone()
+                }),
+                Transform::from_xyz(x, y, 2.5),
+                BarrierPointVisual,
+            ));
+        }
     }
 }
 
@@ -557,34 +691,72 @@ fn handle_mouse_input(
         editor.ruler_start = None;
         editor.ruler_end = None;
 
-        // Find nearest control point
-        let threshold = 3.0; // world units
-        let mut best_idx: Option<usize> = None;
-        let mut best_dist = f32::MAX;
-        for (i, &[x, y]) in editor.track_file.control_points.iter().enumerate() {
-            let d = world_pos.distance(Vec2::new(x, y));
-            if d < best_dist && d < threshold {
-                best_dist = d;
-                best_idx = Some(i);
+        match editor.mode {
+            EditMode::Track => {
+                let best_idx = nearest_track_point(&editor.track_file, world_pos, 3.0);
+                editor.selected_track_point = best_idx;
+                editor.selected_barrier_point = None;
+                if best_idx.is_some() {
+                    editor.dragging = true;
+                    editor.drag_prev_world = Some(world_pos);
+                    editor.push_undo(); // snapshot before drag
+                }
             }
-        }
-        editor.selected_point = best_idx;
-        if best_idx.is_some() {
-            editor.dragging = true;
-            editor.drag_prev_world = Some(world_pos);
-            editor.push_undo(); // snapshot before drag
+            EditMode::Barrier => {
+                let best_idx = nearest_barrier_point(&editor.track_file, world_pos, 3.0);
+                editor.selected_barrier_point = best_idx;
+                editor.selected_track_point = None;
+                if let Some((barrier_idx, _point_idx)) = best_idx {
+                    editor.active_barrier = Some(barrier_idx);
+                    editor.dragging = true;
+                    editor.drag_prev_world = Some(world_pos);
+                    editor.push_undo(); // snapshot before drag
+                } else {
+                    editor.push_undo();
+                    let barrier_idx = if let Some(idx) = editor.active_barrier {
+                        idx
+                    } else {
+                        editor
+                            .track_file
+                            .barriers
+                            .push(TrackBarrier { points: Vec::new() });
+                        let idx = editor.track_file.barriers.len() - 1;
+                        editor.active_barrier = Some(idx);
+                        idx
+                    };
+                    editor.track_file.barriers[barrier_idx]
+                        .points
+                        .push([world_pos.x, world_pos.y]);
+                    let point_idx = editor.track_file.barriers[barrier_idx].points.len() - 1;
+                    editor.selected_barrier_point = Some((barrier_idx, point_idx));
+                }
+            }
         }
         rebuild.0 += 1; // update visuals for selection change
     }
 
-    if buttons.pressed(MouseButton::Left)
-        && editor.dragging
-        && let Some(idx) = editor.selected_point
-    {
-        editor.track_file.control_points[idx] = [world_pos.x, world_pos.y];
-        editor.drag_prev_world = Some(world_pos);
-        editor.dirty = true;
-        rebuild.0 += 1;
+    if buttons.pressed(MouseButton::Left) && editor.dragging {
+        match editor.mode {
+            EditMode::Track => {
+                if let Some(idx) = editor.selected_track_point {
+                    editor.track_file.control_points[idx] = [world_pos.x, world_pos.y];
+                    editor.drag_prev_world = Some(world_pos);
+                    editor.dirty = true;
+                    rebuild.0 += 1;
+                }
+            }
+            EditMode::Barrier => {
+                if let Some((barrier_idx, point_idx)) = editor.selected_barrier_point
+                    && let Some(barrier) = editor.track_file.barriers.get_mut(barrier_idx)
+                    && point_idx < barrier.points.len()
+                {
+                    barrier.points[point_idx] = [world_pos.x, world_pos.y];
+                    editor.drag_prev_world = Some(world_pos);
+                    editor.dirty = true;
+                    rebuild.0 += 1;
+                }
+            }
+        }
     }
 
     if buttons.just_released(MouseButton::Left) {
@@ -658,7 +830,9 @@ fn handle_keyboard(
                 Ok(tf) => {
                     editor.track_file = tf;
                     editor.file_path = Some(path);
-                    editor.selected_point = None;
+                    editor.selected_track_point = None;
+                    editor.selected_barrier_point = None;
+                    editor.active_barrier = None;
                     editor.undo_stack.clear();
                     editor.redo_stack.clear();
                     editor.dirty = false;
@@ -675,7 +849,9 @@ fn handle_keyboard(
     if ctrl && keyboard.just_pressed(KeyCode::KeyN) {
         editor.track_file = TrackFile::new_empty("Untitled");
         editor.file_path = None;
-        editor.selected_point = None;
+        editor.selected_track_point = None;
+        editor.selected_barrier_point = None;
+        editor.active_barrier = None;
         editor.undo_stack.clear();
         editor.redo_stack.clear();
         editor.dirty = false;
@@ -683,8 +859,40 @@ fn handle_keyboard(
         return;
     }
 
+    // --- Mode / barrier drawing controls ---
+    if keyboard.just_pressed(KeyCode::KeyB) && !ctrl {
+        editor.mode = match editor.mode {
+            EditMode::Track => EditMode::Barrier,
+            EditMode::Barrier => EditMode::Track,
+        };
+        editor.dragging = false;
+        editor.selected_track_point = None;
+        editor.selected_barrier_point = None;
+        rebuild.0 += 1;
+        return;
+    }
+
+    if editor.mode == EditMode::Barrier && keyboard.just_pressed(KeyCode::KeyN) && !ctrl {
+        editor.push_undo();
+        editor
+            .track_file
+            .barriers
+            .push(TrackBarrier { points: Vec::new() });
+        editor.active_barrier = Some(editor.track_file.barriers.len() - 1);
+        editor.selected_barrier_point = None;
+        rebuild.0 += 1;
+        return;
+    }
+
+    if editor.mode == EditMode::Barrier && keyboard.just_pressed(KeyCode::Enter) {
+        editor.active_barrier = None;
+        editor.selected_barrier_point = None;
+        rebuild.0 += 1;
+        return;
+    }
+
     // --- Add point (A) at cursor ---
-    if keyboard.just_pressed(KeyCode::KeyA) {
+    if editor.mode == EditMode::Track && keyboard.just_pressed(KeyCode::KeyA) {
         let Ok(window) = windows.single() else { return };
         let Ok((camera, cam_gt)) = camera_q.single() else {
             return;
@@ -699,23 +907,49 @@ fn handle_keyboard(
             .track_file
             .control_points
             .insert(insert_idx, [world_pos.x, world_pos.y]);
-        editor.selected_point = Some(insert_idx);
+        editor.selected_track_point = Some(insert_idx);
         rebuild.0 += 1;
         return;
     }
 
     // --- Delete selected point (Delete / Backspace) ---
     if keyboard.just_pressed(KeyCode::Delete) || keyboard.just_pressed(KeyCode::Backspace) {
-        if let Some(idx) = editor.selected_point
-            && editor.track_file.control_points.len() > 1
-        {
-            editor.push_undo();
-            editor.track_file.control_points.remove(idx);
-            // Adjust selection
-            if idx >= editor.track_file.control_points.len() {
-                editor.selected_point = Some(editor.track_file.control_points.len() - 1);
+        match editor.mode {
+            EditMode::Track => {
+                if let Some(idx) = editor.selected_track_point
+                    && editor.track_file.control_points.len() > 1
+                {
+                    editor.push_undo();
+                    editor.track_file.control_points.remove(idx);
+                    if idx >= editor.track_file.control_points.len() {
+                        editor.selected_track_point =
+                            Some(editor.track_file.control_points.len() - 1);
+                    }
+                    rebuild.0 += 1;
+                }
             }
-            rebuild.0 += 1;
+            EditMode::Barrier => {
+                if let Some((barrier_idx, point_idx)) = editor.selected_barrier_point
+                    && barrier_idx < editor.track_file.barriers.len()
+                {
+                    editor.push_undo();
+                    let barrier = &mut editor.track_file.barriers[barrier_idx];
+                    if point_idx < barrier.points.len() {
+                        barrier.points.remove(point_idx);
+                    }
+                    if editor.track_file.barriers[barrier_idx].points.len() < 2 {
+                        editor.track_file.barriers.remove(barrier_idx);
+                        editor.selected_barrier_point = None;
+                        editor.active_barrier = None;
+                    } else {
+                        let next_idx =
+                            point_idx.min(editor.track_file.barriers[barrier_idx].points.len() - 1);
+                        editor.selected_barrier_point = Some((barrier_idx, next_idx));
+                        editor.active_barrier = Some(barrier_idx);
+                    }
+                    rebuild.0 += 1;
+                }
+            }
         }
         return;
     }
@@ -779,6 +1013,12 @@ fn scale_track(editor: &mut ResMut<EditorState>, factor: f32) {
         p[0] = cx + (p[0] - cx) * factor;
         p[1] = cy + (p[1] - cy) * factor;
     }
+    for barrier in &mut editor.track_file.barriers {
+        for p in &mut barrier.points {
+            p[0] = cx + (p[0] - cx) * factor;
+            p[1] = cy + (p[1] - cy) * factor;
+        }
+    }
 }
 
 /// Find the best index to insert a new control point near `click`.
@@ -807,6 +1047,38 @@ fn find_insert_index(click: Vec2, points: &[[f32; 2]]) -> usize {
     best_idx
 }
 
+fn nearest_track_point(track_file: &TrackFile, world_pos: Vec2, threshold: f32) -> Option<usize> {
+    let mut best_idx = None;
+    let mut best_dist = f32::MAX;
+    for (i, &[x, y]) in track_file.control_points.iter().enumerate() {
+        let d = world_pos.distance(Vec2::new(x, y));
+        if d < best_dist && d < threshold {
+            best_dist = d;
+            best_idx = Some(i);
+        }
+    }
+    best_idx
+}
+
+fn nearest_barrier_point(
+    track_file: &TrackFile,
+    world_pos: Vec2,
+    threshold: f32,
+) -> Option<(usize, usize)> {
+    let mut best_idx = None;
+    let mut best_dist = f32::MAX;
+    for (barrier_idx, barrier) in track_file.barriers.iter().enumerate() {
+        for (point_idx, &[x, y]) in barrier.points.iter().enumerate() {
+            let d = world_pos.distance(Vec2::new(x, y));
+            if d < best_dist && d < threshold {
+                best_dist = d;
+                best_idx = Some((barrier_idx, point_idx));
+            }
+        }
+    }
+    best_idx
+}
+
 fn point_to_segment_dist(p: Vec2, a: Vec2, b: Vec2) -> f32 {
     let ab = b - a;
     let ap = p - a;
@@ -826,8 +1098,11 @@ fn rebuild_visuals(
     mut commands: Commands,
     old_track: Query<Entity, With<TrackVisual>>,
     old_points: Query<Entity, With<ControlPointVisual>>,
+    old_barriers: Query<Entity, With<BarrierVisual>>,
+    old_barrier_points: Query<Entity, With<BarrierPointVisual>>,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
+    mut images: ResMut<Assets<Image>>,
     editor: Res<EditorState>,
 ) {
     // Despawn old entities
@@ -835,6 +1110,12 @@ fn rebuild_visuals(
         commands.entity(entity).despawn();
     }
     for entity in &old_points {
+        commands.entity(entity).despawn();
+    }
+    for entity in &old_barriers {
+        commands.entity(entity).despawn();
+    }
+    for entity in &old_barrier_points {
         commands.entity(entity).despawn();
     }
 
@@ -851,7 +1132,21 @@ fn rebuild_visuals(
         &mut meshes,
         &mut materials,
         &editor.track_file,
-        editor.selected_point,
+        editor.selected_track_point,
+    );
+    spawn_barrier_visuals(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        &mut images,
+        &editor.track_file,
+    );
+    spawn_barrier_point_visuals(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        &editor.track_file,
+        editor.selected_barrier_point,
     );
 }
 
@@ -869,6 +1164,7 @@ fn update_ui_text(
     if let Ok(mut text) = ui_text.single_mut() {
         let name = &editor.track_file.metadata.name;
         let n_pts = editor.track_file.control_points.len();
+        let n_barriers = editor.track_file.barriers.len();
         let dirty_marker = if editor.dirty { " *" } else { "" };
         let file_str = editor
             .file_path
@@ -882,10 +1178,18 @@ fn update_ui_text(
             "N/A".into()
         };
 
-        let selected_str = editor
-            .selected_point
-            .map(|i| format!("  |  Selected: #{i}"))
-            .unwrap_or_default();
+        let selected_str = match editor.mode {
+            EditMode::Track => editor
+                .selected_track_point
+                .map(|i| format!("  |  Selected track: #{i}"))
+                .unwrap_or_default(),
+            EditMode::Barrier => editor
+                .selected_barrier_point
+                .map(|(barrier_idx, point_idx)| {
+                    format!("  |  Selected barrier: #{barrier_idx}.{point_idx}")
+                })
+                .unwrap_or_default(),
+        };
 
         let tw = editor.track_file.metadata.track_width;
 
@@ -897,7 +1201,8 @@ fn update_ui_text(
 
         **text = format!(
             "{name}{dirty_marker}  |  {file_str}\n\
-             Points: {n_pts}  |  Width: {tw:.1}  |  Length: {length_str}{selected_str}{curvature_str}"
+             Mode: {}  |  Points: {n_pts}  |  Barriers: {n_barriers}  |  Width: {tw:.1}  |  Length: {length_str}{selected_str}{curvature_str}",
+            editor.mode.label()
         );
     }
 
@@ -932,12 +1237,33 @@ fn draw_editor_gizmos(
         }
     }
 
+    for (barrier_idx, barrier) in editor.track_file.barriers.iter().enumerate() {
+        for pair in barrier.points.windows(2) {
+            let a = Vec2::new(pair[0][0], pair[0][1]);
+            let b = Vec2::new(pair[1][0], pair[1][1]);
+            let alpha = if editor.active_barrier == Some(barrier_idx) {
+                0.75
+            } else {
+                0.45
+            };
+            gizmos.line_2d(a, b, Color::srgba(1.0, 0.35, 0.05, alpha));
+        }
+    }
+
     // Highlight selected point with a larger ring
-    if let Some(idx) = editor.selected_point
+    if let Some(idx) = editor.selected_track_point
         && idx < pts.len()
     {
         let p = Vec2::new(pts[idx][0], pts[idx][1]);
         gizmos.circle_2d(p, 2.0, css::AQUA);
+    }
+
+    if let Some((barrier_idx, point_idx)) = editor.selected_barrier_point
+        && let Some(barrier) = editor.track_file.barriers.get(barrier_idx)
+        && let Some(point) = barrier.points.get(point_idx)
+    {
+        let p = Vec2::new(point[0], point[1]);
+        gizmos.circle_2d(p, 1.5, css::AQUA);
     }
 
     // Draw the spline itself as a gizmo line (thin, on top of meshes for clarity)

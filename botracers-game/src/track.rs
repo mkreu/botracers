@@ -1,4 +1,19 @@
 use bevy::prelude::*;
+use bevy::{
+    image::{ImageAddressMode, ImageSampler},
+    render::render_resource::{Extent3d, TextureDimension, TextureFormat},
+};
+
+pub const BARRIER_WIDTH: f32 = 1.1;
+pub const BARRIER_TEXTURE_REPEAT_LENGTH: f32 = 1.1;
+pub const BARRIER_COLLIDER_OVERLAP: f32 = 0.2;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BarrierSegment {
+    pub midpoint: Vec2,
+    pub length: f32,
+    pub angle: f32,
+}
 
 /// The computed cubic spline for the track centre line.
 #[derive(Resource)]
@@ -32,6 +47,83 @@ pub fn spline_length(spline: &CubicCurve<Vec2>, samples: usize) -> f32 {
 pub fn first_point_from_file(track_file: &crate::track_format::TrackFile) -> Vec2 {
     let pts = track_file.control_points_vec2();
     pts[0]
+}
+
+pub fn barrier_segments(points: &[Vec2]) -> Vec<BarrierSegment> {
+    points
+        .windows(2)
+        .filter_map(|pair| {
+            let start = pair[0];
+            let end = pair[1];
+            let delta = end - start;
+            let length = delta.length();
+            if length <= 1e-4 {
+                return None;
+            }
+
+            Some(BarrierSegment {
+                midpoint: start + delta * 0.5,
+                length,
+                angle: delta.y.atan2(delta.x),
+            })
+        })
+        .collect()
+}
+
+pub fn create_textured_barrier_segment_mesh(length: f32, width: f32, repeat_length: f32) -> Mesh {
+    let half_length = length * 0.5;
+    let half_width = width * 0.5;
+    let u_max = length / repeat_length.max(1e-4);
+    let positions = vec![
+        [-half_length, -half_width, 0.0],
+        [half_length, -half_width, 0.0],
+        [half_length, half_width, 0.0],
+        [-half_length, half_width, 0.0],
+    ];
+    let uvs = vec![[0.0, 0.0], [u_max, 0.0], [u_max, 1.0], [0.0, 1.0]];
+    let indices = vec![0, 1, 2, 0, 2, 3];
+
+    let mut mesh = Mesh::new(
+        bevy::mesh::PrimitiveTopology::TriangleList,
+        bevy::asset::RenderAssetUsages::default(),
+    );
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+    mesh.insert_indices(bevy::mesh::Indices::U32(indices));
+    mesh
+}
+
+pub fn create_tire_barrier_texture() -> Image {
+    const SIZE: u32 = 32;
+    let mut data = Vec::with_capacity((SIZE * SIZE * 4) as usize);
+    for y in 0..SIZE {
+        for x in 0..SIZE {
+            let dx = x as f32 - 15.5;
+            let dy = y as f32 - 15.5;
+            let r = (dx * dx + dy * dy).sqrt();
+            let alpha = if (9.0..=15.0).contains(&r) { 255 } else { 0 };
+            let shade = if (x / 4 + y / 4) % 2 == 0 { 22 } else { 36 };
+            data.extend_from_slice(&[shade, shade, shade, alpha]);
+        }
+    }
+
+    let mut image = Image::new(
+        Extent3d {
+            width: SIZE,
+            height: SIZE,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        bevy::asset::RenderAssetUsages::default(),
+    );
+    image
+        .sampler
+        .get_or_init_descriptor()
+        .set_address_mode(ImageAddressMode::Repeat);
+    image.sampler = ImageSampler::Descriptor(image.sampler.get_or_init_descriptor().clone());
+    image
 }
 
 pub fn create_track_mesh(spline: &CubicCurve<Vec2>, track_width: f32, segments: usize) -> Mesh {
@@ -240,4 +332,43 @@ pub fn sample_track_borders(
     }
 
     (inner, outer)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::barrier_segments;
+    use bevy::prelude::*;
+
+    #[test]
+    fn barrier_segments_require_at_least_two_points() {
+        assert!(barrier_segments(&[]).is_empty());
+        assert!(barrier_segments(&[Vec2::ZERO]).is_empty());
+    }
+
+    #[test]
+    fn barrier_segments_describe_straight_segment() {
+        let segments = barrier_segments(&[Vec2::new(0.0, 0.0), Vec2::new(4.0, 0.0)]);
+
+        assert_eq!(segments.len(), 1);
+        assert_eq!(segments[0].midpoint, Vec2::new(2.0, 0.0));
+        assert_eq!(segments[0].length, 4.0);
+        assert_eq!(segments[0].angle, 0.0);
+    }
+
+    #[test]
+    fn barrier_segments_skip_zero_length_pairs() {
+        let segments = barrier_segments(&[
+            Vec2::new(0.0, 0.0),
+            Vec2::new(0.0, 0.0),
+            Vec2::new(0.0, 3.0),
+            Vec2::new(4.0, 3.0),
+        ]);
+
+        assert_eq!(segments.len(), 2);
+        assert_eq!(segments[0].midpoint, Vec2::new(0.0, 1.5));
+        assert_eq!(segments[0].length, 3.0);
+        assert!((segments[0].angle - std::f32::consts::FRAC_PI_2).abs() < 1e-6);
+        assert_eq!(segments[1].midpoint, Vec2::new(2.0, 3.0));
+        assert_eq!(segments[1].length, 4.0);
+    }
 }

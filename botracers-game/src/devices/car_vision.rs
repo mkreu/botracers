@@ -219,4 +219,3 @@ fn signed_curvature(spline: &CubicCurve<Vec2>, t: f32) -> f32 {
     }
     cross / (speed_sq * speed_sq.sqrt())
 }
-

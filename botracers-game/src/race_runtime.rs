@@ -327,6 +327,7 @@ fn setup_track(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<ColorMaterial>>,
+    mut images: ResMut<Assets<Image>>,
 ) {
     let track_file =
         TrackFile::load_builtin().unwrap_or_else(|_| panic!("Failed to load track file"));
@@ -366,6 +367,53 @@ fn setup_track(
         MeshMaterial2d(materials.add(ColorMaterial::default())),
         Transform::from_xyz(0.0, 0.0, 0.1),
     ));
+
+    spawn_track_barriers(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        &mut images,
+        &track_file,
+    );
+}
+
+fn spawn_track_barriers(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<ColorMaterial>>,
+    images: &mut ResMut<Assets<Image>>,
+    track_file: &TrackFile,
+) {
+    let texture = images.add(track::create_tire_barrier_texture());
+    let material = materials.add(ColorMaterial {
+        texture: Some(texture),
+        ..default()
+    });
+
+    for barrier_idx in 0..track_file.barriers.len() {
+        let Some(points) = track_file.barrier_points_vec2(barrier_idx) else {
+            continue;
+        };
+        for segment in track::barrier_segments(&points) {
+            commands.spawn((
+                Mesh2d(meshes.add(track::create_textured_barrier_segment_mesh(
+                    segment.length,
+                    track::BARRIER_WIDTH,
+                    track::BARRIER_TEXTURE_REPEAT_LENGTH,
+                ))),
+                MeshMaterial2d(material.clone()),
+                RigidBody::Static,
+                Collider::rectangle(
+                    segment.length + track::BARRIER_COLLIDER_OVERLAP,
+                    track::BARRIER_WIDTH,
+                ),
+                Friction::new(0.8),
+                Restitution::new(0.1),
+                Transform::from_xyz(segment.midpoint.x, segment.midpoint.y, 0.35)
+                    .with_rotation(Quat::from_rotation_z(segment.angle)),
+            ));
+        }
+    }
 }
 
 fn rpm_to_rad_per_sec(rpm: f32) -> f32 {

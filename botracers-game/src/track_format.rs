@@ -7,6 +7,13 @@ pub struct TrackFile {
     #[serde(default)]
     pub metadata: TrackMetadata,
     pub control_points: Vec<[f32; 2]>,
+    #[serde(default)]
+    pub barriers: Vec<TrackBarrier>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct TrackBarrier {
+    pub points: Vec<[f32; 2]>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -55,6 +62,7 @@ impl TrackFile {
                 kerb_width: default_kerb_width(),
             },
             control_points: Vec::new(),
+            barriers: Vec::new(),
         }
     }
 
@@ -83,5 +91,50 @@ impl TrackFile {
             .iter()
             .map(|&[x, y]| Vec2::new(x, y))
             .collect()
+    }
+
+    pub fn barrier_points_vec2(&self, barrier_index: usize) -> Option<Vec<Vec2>> {
+        self.barriers.get(barrier_index).map(|barrier| {
+            barrier
+                .points
+                .iter()
+                .map(|&[x, y]| Vec2::new(x, y))
+                .collect()
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{TrackBarrier, TrackFile};
+
+    #[test]
+    fn parses_old_track_without_barriers() {
+        let track: TrackFile = toml::from_str(
+            r#"
+control_points = [[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]]
+"#,
+        )
+        .unwrap();
+
+        assert!(track.barriers.is_empty());
+    }
+
+    #[test]
+    fn round_trips_barrier_polyline() {
+        let mut track = TrackFile::new_empty("barrier test");
+        track.control_points = vec![[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0]];
+        track.barriers.push(TrackBarrier {
+            points: vec![[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]],
+        });
+
+        let text = toml::to_string_pretty(&track).unwrap();
+        let parsed: TrackFile = toml::from_str(&text).unwrap();
+
+        assert_eq!(parsed.barriers.len(), 1);
+        assert_eq!(
+            parsed.barriers[0].points,
+            vec![[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]]
+        );
     }
 }
