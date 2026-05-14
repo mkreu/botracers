@@ -11,7 +11,9 @@ use emulator::bevy::{CpuComponent, cpu_system};
 use emulator::cpu::LogDevice;
 
 use botracers_game::DebugGizmos;
-use botracers_game::devices::{self, CarControlsDevice, CarRadarDevice, CarStateDevice};
+use botracers_game::devices::{
+    self, CarControlsDevice, CarDebugDevice, CarRadarDevice, CarStateDevice,
+};
 use botracers_game::track;
 use botracers_game::track_format::TrackFile;
 use botracers_game::{Car, devices::CarVisionDevice};
@@ -61,7 +63,15 @@ impl Plugin for RaceRuntimePlugin {
                 FixedUpdate,
                 apply_car_forces.run_if(in_state(SimState::Racing)),
             )
-            .add_systems(Update, (update_fps_counter, update_camera, draw_gizmos));
+            .add_systems(
+                Update,
+                (
+                    update_fps_counter,
+                    update_camera,
+                    draw_gizmos,
+                    devices::car_debug_system,
+                ),
+            );
     }
 }
 
@@ -609,6 +619,7 @@ fn spawn_car(
         CarControlsDevice::default(),
         CarVisionDevice::default(),
         CarRadarDevice::default(),
+        CarDebugDevice::default(),
     ));
 
     let entity_id = entity.id();
@@ -685,6 +696,7 @@ emulator::define_cpu_config! {
         3 => CarControlsDevice,
         4 => CarVisionDevice,
         5 => CarRadarDevice,
+        6 => CarDebugDevice,
     }
 }
 

@@ -4,8 +4,9 @@
 use core::fmt::Write;
 
 use botracers_bot_sdk::{
-    driving::{CarControls, CarState, CarVision},
-    log, SLOT2, SLOT3, SLOT4,
+    SLOT2, SLOT3, SLOT4, SLOT6,
+    driving::{CarControls, CarDebug, CarState, CarVision},
+    log,
 };
 
 #[unsafe(export_name = "main")]
@@ -15,6 +16,9 @@ fn main() -> ! {
     let state = CarState::bind(SLOT2);
     let mut controls = CarControls::bind(SLOT3);
     let mut vision = CarVision::bind(SLOT4);
+    let mut debug = CarDebug::bind(SLOT6);
+
+
 
     loop {
         let speed = state.speed();
@@ -25,6 +29,11 @@ fn main() -> ! {
         // lookahead (10 m) — close enough to be reactive, far enough to be smooth.
         let curv_now = vision.curvature_at(0.0);
         let curv_near = vision.curvature_at(10.0);
+
+        debug.move_to_xy(0.0, 0.0);
+        debug.line_to_xy(-curv_now*10.0, 5.0);
+        debug.line_to_xy(-curv_now*40.0, 10.0);
+        debug.submit();
 
         let centering = offset * 0.04;
         let heading_correction = angle * 0.5;

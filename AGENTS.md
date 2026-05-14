@@ -80,6 +80,7 @@ pub trait Device: Send + Sync {
 | `0x300–0x3FF`   | 2           | CarControlsDevice |
 | `0x400–0x4FF`   | 3           | CarVisionDevice |
 | `0x500–0x5FF`   | 4           | CarRadarDevice  |
+| `0x600–0x6FF`   | 5           | CarDebugDevice  |
 | `≥ 0x1000`      | —           | DRAM            |
 
 Devices receive **offset-relative addresses** (i.e., `addr & 0xFF`), not absolute addresses.
@@ -90,7 +91,7 @@ Devices receive **offset-relative addresses** (i.e., `addr & 0xFF`), not absolut
 
 - Target: `riscv32imafc-unknown-none-elf` (configured in `bot/.cargo/config.toml`)
 - Linker script `link.x` places `.text` at `0x1000` (start of DRAM)
-- Depends on `botracers-bot-sdk` for slot constants, MMIO bindings (`CarState`, `CarControls`, `CarVision`, `CarRadar`), log writer, and default runtime (`panic-handler` + `global-allocator` features)
+- Depends on `botracers-bot-sdk` for slot constants, MMIO bindings (`CarState`, `CarControls`, `CarVision`, `CarRadar`, `CarDebug`), log writer, and default runtime (`panic-handler` + `global-allocator` features)
 - `.cargo/config.toml` and local `link.x` stay in each bot repo; target/linker wiring is crate-local on stable Rust
 - `bin/car.rs` — Vision-based car AI: reads `CarVision` (offset, angle, curvatures) and `CarState` (speed) to compute steering and braking
 - `bin/bottles.rs` — Test program (99 bottles of beer via log device)
@@ -140,6 +141,15 @@ Devices receive **offset-relative addresses** (i.e., `addr & 0xFF`), not absolut
 | 0x1C   | car3_y  | f32  |
 
 Entries are absolute world positions of nearest cars, strictly nearest-first and excluding self. Missing entries are encoded as `NaN` pairs.
+
+**CarDebug layout** (SLOT6, 0x600, written by bot):
+| Offset | Field     | Type | Access |
+|--------|-----------|------|--------|
+| 0x00   | point_x   | f32  | write  |
+| 0x04   | point_y   | f32  | write  |
+| 0x08   | command   | u32  | write  |
+
+`CarDebug` draws car-local line strips using commands: `0 = move` starts a new pending strip at the current point, `1 = line` appends the current point to the pending strip, and `2 = submit` swaps the pending line strips into the displayed cache and starts a new empty pending cache. Submitting an empty pending cache clears the displayed lines. Points are transformed by the car's current position and rotation when rendered for cars with `DebugGizmos` enabled.
 
 ### `botracers-protocol/` — Shared API Types
 
@@ -235,7 +245,7 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
 - **`ui.rs`** — Split UI plugins:
   - `BootstrapUiPlugin` (server status + artifact actions)
   - `RaceRuntimeUiPlugin` (race controls + car list + focused debug telemetry + console)
-- **`devices.rs`** — `CarStateDevice`, `CarControlsDevice`, `CarVisionDevice`, and `CarRadarDevice` implementing `Device` (host-side counterparts to the bot's volatile pointers and their update systems for bevy logic)
+- **`devices.rs`** — `CarStateDevice`, `CarControlsDevice`, `CarVisionDevice`, `CarRadarDevice`, and `CarDebugDevice` implementing `Device` (host-side counterparts to the bot's volatile pointers and their update systems for bevy logic)
 - **`track.rs`** — `TrackSpline` resource, spline construction, track/kerb mesh generation, shared barrier segment/mesh/texture helpers
 - **`track_format.rs`** — TOML-based track file format (`TrackFile`) including defaulted open-polyline `barriers`
 - **`bin/editor.rs`** — Track editor tool
@@ -255,7 +265,7 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
 - `Car` — steering/inputs plus drivetrain state (`engine_rpm`, `wheel_omega`) used by physics
 - `EmulatorDriver` — marker component for RISC-V-emulator-driven cars
 - `CpuComponent` (from emulator crate) — attached to emulator-driven cars
-- `LogDevice`, `CarStateDevice`, `CarControlsDevice`, `CarVisionDevice`, `CarRadarDevice` — MMIO device components attached to emulator-driven cars
+- `LogDevice`, `CarStateDevice`, `CarControlsDevice`, `CarVisionDevice`, `CarRadarDevice`, `CarDebugDevice` — MMIO device components attached to emulator-driven cars
 - `CarLabel` — name label for each car
 - `DebugGizmos` — marker; when present on a car, debug gizmos are drawn (off by default)
 - `LongitudinalDebugData` — per-car telemetry snapshot for drivetrain/longitudinal force debugging
@@ -281,7 +291,7 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
 2. `Update`:
     - bootstrap (`handle_web_api_commands`, `process_web_api_events`, artifact download queue, spawn-request translation)
     - runtime (`handle_spawn_resolved_event`, `apply_cpu_frequency_setting`, `handle_car_input`)
-    - UI systems (bootstrap + race runtime panels, including followed-car drivetrain telemetry when gizmos are enabled), `update_camera`, `draw_gizmos`, `update_fps_counter`
+    - UI systems (bootstrap + race runtime panels, including followed-car drivetrain telemetry when gizmos are enabled), `update_camera`, `draw_gizmos`, `car_debug_system`, `update_fps_counter`
 3. `FixedUpdate` (in order, only in `Racing` state):
     - `update_car_state_device` — writes car speed into `CarStateDevice` (**before** CPU execution system)
     - `update_car_vision_device` — computes lateral offset, heading angle, and curvature lookaheads and writes them into `CarVisionDevice` (**before** CPU execution system)
@@ -307,7 +317,7 @@ Cars can only be added/removed in `PreRace` state. Each emulator car gets its ow
 
 0. **No compatibility stubs unless requested** — When refactoring APIs, do not keep unused backward-compatibility code paths, deprecated wrappers, or dead shim layers unless explicitly requested. Prefer deleting old forms and updating all call sites.
 
-1. **Emulator is use-case agnostic** — Car-specific devices (`CarStateDevice`, `CarControlsDevice`, `CarVisionDevice`, `CarRadarDevice`) live in `botracers-game/`, not in `emulator/`. The emulator only provides `Device`, `Mmu`, `LogDevice` (buffered), `CpuComponent`, and the plugin.
+1. **Emulator is use-case agnostic** — Car-specific devices (`CarStateDevice`, `CarControlsDevice`, `CarVisionDevice`, `CarRadarDevice`, `CarDebugDevice`) live in `botracers-game/`, not in `emulator/`. The emulator only provides `Device`, `Mmu`, `LogDevice` (buffered), `CpuComponent`, and the plugin.
 
 2. **Each emulator car is fully isolated** — Separate `Hart`, `Dram`, and device-component instances per car entity. No shared state between emulator instances.
 

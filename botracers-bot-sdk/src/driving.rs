@@ -190,3 +190,59 @@ impl CarRadar {
         }
     }
 }
+
+/// SLOT6 (0x600) — car-local debug line drawing.
+///
+/// Layout:
+///   0x00: next line point x [write]
+///   0x04: next line point y [write]
+///   0x08: command (u32: 0 = move, 1 = line, 2 = submit) [write]
+pub struct CarDebug {
+    point_x: *mut f32,
+    point_y: *mut f32,
+    command: *mut u32,
+}
+
+impl CarDebug {
+    pub const fn bind(slot: usize) -> Self {
+        Self {
+            point_x: (slot + 0x00) as *mut f32,
+            point_y: (slot + 0x04) as *mut f32,
+            command: (slot + 0x08) as *mut u32,
+        }
+    }
+
+    pub fn submit(&mut self) {
+        self.write_command(2);
+    }
+
+    pub fn move_to(&mut self, point: Vec2) {
+        self.write_point_command(point, 0);
+    }
+
+    pub fn line_to(&mut self, point: Vec2) {
+        self.write_point_command(point, 1);
+    }
+
+    pub fn move_to_xy(&mut self, x: f32, y: f32) {
+        self.move_to(Vec2::new(x, y));
+    }
+
+    pub fn line_to_xy(&mut self, x: f32, y: f32) {
+        self.line_to(Vec2::new(x, y));
+    }
+
+    fn write_point_command(&mut self, point: Vec2, command: u32) {
+        unsafe {
+            ptr::write_volatile(self.point_x, point.x);
+            ptr::write_volatile(self.point_y, point.y);
+            ptr::write_volatile(self.command, command);
+        }
+    }
+
+    fn write_command(&mut self, command: u32) {
+        unsafe {
+            ptr::write_volatile(self.command, command);
+        }
+    }
+}
