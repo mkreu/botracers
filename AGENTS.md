@@ -110,6 +110,7 @@ Devices receive **offset-relative addresses** (i.e., `addr & 0xFF`), not absolut
 | Offset | Field | Type |
 |--------|-------|------|
 | 0x00   | speed | f32  |
+| 0x04   | elapsed_secs | f32  |
 
 **CarControls layout** (SLOT3, 0x300, written by bot):
 | Offset | Field       | Type |
@@ -240,7 +241,7 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
 
 - **`main.rs`** — Thin composition root: parses CLI (`--standalone`), inserts `BootstrapConfig`, and wires plugins (`GameApiPlugin`, `RaceRuntimePlugin`, `BootstrapPlugin`, `BootstrapUiPlugin`, `RaceRuntimeUiPlugin`)
 - **`game_api.rs`** — Shared in-game message contracts and driver model (`DriverType`, `SpawnCarRequest`, `SpawnResolvedCarRequest`, `WebApiCommand`) plus `GameApiPlugin` message registration
-- **`race_runtime.rs`** — `RaceRuntimePlugin`: simulation state (`SimState`), race resources (`RaceManager`, `FollowCar`, `CpuFrequencySetting`), track/camera/FPS setup, event-based resolved-car spawning, fixed-step emulator/device/physics execution, longitudinal drivetrain model, camera + gizmos + keyboard driving
+- **`race_runtime.rs`** — `RaceRuntimePlugin`: simulation state (`SimState`), race resources (`RaceManager`, `FollowCar`, `RaceClock`, `CpuFrequencySetting`), track/camera/FPS setup, event-based resolved-car spawning, fixed-step emulator/device/physics execution, longitudinal drivetrain model, camera + gizmos + keyboard driving
 - **`bootstrap.rs`** — `BootstrapPlugin`: standalone embedded server startup, auth/capabilities/artifact web API flow, async artifact download pipeline, and `SpawnCarRequest -> SpawnResolvedCarRequest` translation
 - **`ui.rs`** — Split UI plugins:
   - `BootstrapUiPlugin` (server status + artifact actions)
@@ -274,6 +275,7 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
 **Key resources:**
 - `RaceManager` — tracks all spawned cars (`Vec<CarEntry>`), next car ID, and per-car console output
 - `FollowCar` — optional entity to follow with the camera
+- `RaceClock` — active race elapsed time in seconds, reset in `PreRace` and paused while the race is paused
 - `CpuFrequencySetting` — global emulator CPU preset selector (`1k`..`2M` Hz); maps to `instructions_per_update = hz / 200`
 - `SimState` — state machine: `PreRace` (add/remove cars) → `Racing` (simulation active) → `Paused` (toggle)
 - `WebPortalState` — server URL/auth/artifact list/status for web/bootstrap flow
@@ -293,12 +295,13 @@ Entries are absolute world positions of nearest cars, strictly nearest-first and
     - runtime (`handle_spawn_resolved_event`, `apply_cpu_frequency_setting`, `handle_car_input`)
     - UI systems (bootstrap + race runtime panels, including followed-car drivetrain telemetry when gizmos are enabled), `update_camera`, `draw_gizmos`, `car_debug_system`, `update_fps_counter`
 3. `FixedUpdate` (in order, only in `Racing` state):
-    - `update_car_state_device` — writes car speed into `CarStateDevice` (**before** CPU execution system)
+    - `car_state_system` — writes car speed and active race elapsed time into `CarStateDevice` (**before** CPU execution system)
     - `update_car_vision_device` — computes lateral offset, heading angle, and curvature lookaheads and writes them into `CarVisionDevice` (**before** CPU execution system)
     - `update_car_radar_device` — updates `CarRadarDevice` nearest-car absolute positions (**before** CPU execution system)
     - CPU execution system (`cpu_system::<YourCpuConfig>`) — runs N RISC-V instructions per tick; bot reads `CarVisionDevice` and computes controls
-   - `apply_emulator_controls` — reads `CarControlsDevice` → `Car` (**after** CPU execution system)
-   - `apply_car_forces` — applies `Car` state to physics forces
+    - `apply_emulator_controls` — reads `CarControlsDevice` → `Car` (**after** CPU execution system)
+    - `tick_race_clock` — advances active race elapsed time while racing
+    - `apply_car_forces` — applies `Car` state to physics forces
 
 **Car spawning** — Two-stage event flow:
 1. UI sends `SpawnCarRequest { driver: DriverType::RemoteArtifact { .. } }`.

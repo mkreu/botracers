@@ -1,19 +1,22 @@
-use avian2d::prelude::*;
+use avian2d::prelude::LinearVelocity;
 use bevy::prelude::*;
 use emulator::cpu::Device;
+
+use crate::RaceClock;
 
 /// Memory-mapped device that provides car state to the RISC-V bot.
 ///
 /// Layout (all f32, little-endian):
 ///   0x00: speed
+///   0x04: elapsed race time in seconds
 #[derive(Component)]
 pub struct CarStateDevice {
-    data: [u8; 4], // 1 × f32
+    data: [u8; 8], // 2 × f32
 }
 
 impl Default for CarStateDevice {
     fn default() -> Self {
-        Self { data: [0u8; 4] }
+        Self { data: [0u8; 8] }
     }
 }
 
@@ -24,8 +27,9 @@ impl CarStateDevice {
     }
 
     /// Write the full car state from the simulation.
-    pub fn update(&mut self, speed: f32) {
+    pub fn update(&mut self, speed: f32, elapsed_secs: f32) {
         self.write_f32(0x00, speed);
+        self.write_f32(0x04, elapsed_secs);
     }
 }
 
@@ -67,10 +71,12 @@ impl Device for CarStateDevice {
     }
 }
 
-/// Runs BEFORE cpu_system::<RacingCpuConfig>: writes host car kinematics into CarStateDevice.
-pub fn system(mut emu_query: Query<(&LinearVelocity, &mut CarStateDevice)>) {
+/// Runs BEFORE cpu_system::<RacingCpuConfig>: writes host car state into CarStateDevice.
+pub fn system(
+    race_clock: Res<RaceClock>,
+    mut emu_query: Query<(&LinearVelocity, &mut CarStateDevice)>,
+) {
     for (velocity, mut state_dev) in &mut emu_query {
-        let car_speed = velocity.length();
-        state_dev.update(car_speed);
+        state_dev.update(velocity.length(), race_clock.elapsed_secs());
     }
 }

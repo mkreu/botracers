@@ -46,18 +46,24 @@ impl CarControls {
 ///
 /// Layout:
 ///   0x00: speed (m/s)
+///   0x04: elapsed race time (s)
 pub struct CarState {
     speed: *const f32,
+    elapsed_secs: *const f32,
 }
 
 impl CarState {
     pub const fn bind(slot: usize) -> Self {
         Self {
             speed: (slot + 0x00) as *const f32,
+            elapsed_secs: (slot + 0x04) as *const f32,
         }
     }
     pub fn speed(&self) -> f32 {
         unsafe { ptr::read_volatile(self.speed) }
+    }
+    pub fn elapsed_secs(&self) -> f32 {
+        unsafe { ptr::read_volatile(self.elapsed_secs) }
     }
 }
 

@@ -10,13 +10,12 @@ use bevy::{
 use emulator::bevy::{CpuComponent, cpu_system};
 use emulator::cpu::LogDevice;
 
-use botracers_game::DebugGizmos;
 use botracers_game::devices::{
     self, CarControlsDevice, CarDebugDevice, CarRadarDevice, CarStateDevice,
 };
 use botracers_game::track;
 use botracers_game::track_format::TrackFile;
-use botracers_game::{Car, devices::CarVisionDevice};
+use botracers_game::{Car, DebugGizmos, RaceClock, devices::CarVisionDevice};
 
 use crate::game_api::{DriverType, SpawnResolvedCarRequest};
 
@@ -31,6 +30,7 @@ impl Plugin for RaceRuntimePlugin {
             ))
             .insert_resource(RaceManager::default())
             .insert_resource(FollowCar::default())
+            .insert_resource(RaceClock::default())
             .insert_resource(KartLongitudinalParams::default())
             .insert_resource(CpuFrequencySetting::default())
             .add_systems(Startup, (setup_track, setup.after(setup_track)))
@@ -38,7 +38,10 @@ impl Plugin for RaceRuntimePlugin {
             .add_systems(Startup, pause_physics)
             .add_systems(OnEnter(SimState::Racing), unpause_physics)
             .add_systems(OnEnter(SimState::Paused), pause_physics)
-            .add_systems(OnEnter(SimState::PreRace), pause_physics)
+            .add_systems(
+                OnEnter(SimState::PreRace),
+                (pause_physics, reset_race_clock),
+            )
             .add_systems(
                 Update,
                 (handle_spawn_resolved_event, apply_cpu_frequency_setting),
@@ -56,6 +59,7 @@ impl Plugin for RaceRuntimePlugin {
                     devices::car_vision_system.in_set(CpuSystems::PreCpu),
                     cpu_system::<RacingCpuConfig>.in_set(CpuSystems::Cpu),
                     devices::car_controls_system.in_set(CpuSystems::PostCpu),
+                    tick_race_clock.in_set(CpuSystems::PostCpu),
                 )
                     .run_if(in_state(SimState::Racing)),
             )
@@ -513,6 +517,14 @@ fn pause_physics(mut physics_time: ResMut<Time<Physics>>) {
 
 fn unpause_physics(mut physics_time: ResMut<Time<Physics>>) {
     physics_time.unpause();
+}
+
+fn reset_race_clock(mut race_clock: ResMut<RaceClock>) {
+    race_clock.reset();
+}
+
+fn tick_race_clock(mut race_clock: ResMut<RaceClock>, time: Res<Time<Fixed>>) {
+    race_clock.tick(time.delta_secs());
 }
 
 fn grid_offset(index: usize) -> Vec2 {

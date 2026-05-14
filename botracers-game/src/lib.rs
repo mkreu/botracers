@@ -16,3 +16,22 @@ pub struct Car {
     pub engine_rpm: f32,
     pub wheel_omega: f32,
 }
+
+#[derive(Resource, Default)]
+pub struct RaceClock {
+    elapsed_secs: f32,
+}
+
+impl RaceClock {
+    pub fn elapsed_secs(&self) -> f32 {
+        self.elapsed_secs
+    }
+
+    pub fn reset(&mut self) {
+        self.elapsed_secs = 0.0;
+    }
+
+    pub fn tick(&mut self, delta_secs: f32) {
+        self.elapsed_secs += delta_secs;
+    }
+}
