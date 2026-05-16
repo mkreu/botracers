@@ -126,6 +126,36 @@ pub fn create_tire_barrier_texture() -> Image {
     image
 }
 
+pub fn create_start_finish_texture() -> Image {
+    const WIDTH: u32 = 64;
+    const HEIGHT: u32 = 4;
+    let mut data = Vec::with_capacity((WIDTH * HEIGHT * 4) as usize);
+    for _y in 0..HEIGHT {
+        for x in 0..WIDTH {
+            let shade = if x < WIDTH / 2 { 242 } else { 8 };
+            data.extend_from_slice(&[shade, shade, shade, 255]);
+        }
+    }
+
+    let mut image = Image::new(
+        Extent3d {
+            width: WIDTH,
+            height: HEIGHT,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        bevy::asset::RenderAssetUsages::default(),
+    );
+    image
+        .sampler
+        .get_or_init_descriptor()
+        .set_address_mode(ImageAddressMode::Repeat);
+    image.sampler = ImageSampler::Descriptor(image.sampler.get_or_init_descriptor().clone());
+    image
+}
+
 pub fn create_track_mesh(spline: &CubicCurve<Vec2>, track_width: f32, segments: usize) -> Mesh {
     let domain = spline.domain();
     let t_max = domain.end();

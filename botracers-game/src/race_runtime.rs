@@ -336,6 +336,15 @@ mod tests {
 
 const WHEEL_BASE: f32 = 1.18;
 const WHEEL_TRACK: f32 = 0.95;
+const START_GRID_BOXES: usize = 12;
+const START_LINE_THICKNESS: f32 = 0.4;
+const START_LINE_CHECKS: usize = 24;
+const GRID_FRONT_GAP: f32 = 2.0;
+const GRID_BOX_WIDTH: f32 = 1.5;
+const GRID_BOX_LENGTH: f32 = 0.5;
+const GRID_LATERAL_OFFSET: f32 = 2.0;
+const GRID_ROW_SPACING: f32 = 3.5;
+const GRID_LINE_THICKNESS: f32 = 0.08;
 
 fn setup_track(
     mut commands: Commands,
@@ -382,6 +391,17 @@ fn setup_track(
         Transform::from_xyz(0.0, 0.0, 0.1),
     ));
 
+    spawn_start_grid_visuals(
+        &mut commands,
+        &mut meshes,
+        &mut materials,
+        &mut images,
+        track::first_point_from_file(&track_file),
+        &spline,
+        track_width,
+        kerb_width,
+    );
+
     spawn_track_barriers(
         &mut commands,
         &mut meshes,
@@ -389,6 +409,177 @@ fn setup_track(
         &mut images,
         &track_file,
     );
+}
+
+fn spawn_start_grid_visuals(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    materials: &mut ResMut<Assets<ColorMaterial>>,
+    images: &mut ResMut<Assets<Image>>,
+    start_node: Vec2,
+    spline: &CubicCurve<Vec2>,
+    track_width: f32,
+    kerb_width: f32,
+) {
+    let (start_point, tangent) = start_frame_from_spline(spline, start_node);
+    let start_rotation = start_frame_rotation(tangent);
+    let line_width = (track_width - kerb_width * 2.0).max(0.0);
+    let start_texture = images.add(track::create_start_finish_texture());
+    let start_material = materials.add(ColorMaterial {
+        texture: Some(start_texture),
+        ..default()
+    });
+    commands.spawn((
+        Mesh2d(meshes.add(create_start_line_mesh(line_width, START_LINE_THICKNESS))),
+        MeshMaterial2d(start_material),
+        Transform::from_xyz(start_point.x, start_point.y, 0.2)
+            .with_rotation(Quat::from_rotation_z(start_rotation)),
+    ));
+
+    commands.spawn((
+        Mesh2d(meshes.add(create_start_grid_mesh(START_GRID_BOXES))),
+        MeshMaterial2d(materials.add(ColorMaterial::default())),
+        Transform::from_xyz(start_point.x, start_point.y, 0.18)
+            .with_rotation(Quat::from_rotation_z(start_rotation)),
+    ));
+}
+
+fn start_frame_from_spline(spline: &CubicCurve<Vec2>, start_node: Vec2) -> (Vec2, Vec2) {
+    const SAMPLES: usize = 1000;
+
+    let t_max = spline.domain().end();
+    let mut best_index = 0;
+    let mut best_point = spline.position(0.0);
+    let mut best_distance = best_point.distance_squared(start_node);
+
+    for i in 1..SAMPLES {
+        let t = (i as f32 / SAMPLES as f32) * t_max;
+        let point = spline.position(t);
+        let distance = point.distance_squared(start_node);
+        if distance < best_distance {
+            best_index = i;
+            best_point = point;
+            best_distance = distance;
+        }
+    }
+
+    let prev_index = if best_index == 0 {
+        SAMPLES - 1
+    } else {
+        best_index - 1
+    };
+    let next_index = (best_index + 1) % SAMPLES;
+    let prev_t = (prev_index as f32 / SAMPLES as f32) * t_max;
+    let next_t = (next_index as f32 / SAMPLES as f32) * t_max;
+    let tangent = spline.position(next_t) - spline.position(prev_t);
+    if tangent.length_squared() > 1e-6 {
+        (best_point, tangent.normalize())
+    } else {
+        (best_point, Vec2::X)
+    }
+}
+
+fn start_frame_rotation(tangent: Vec2) -> f32 {
+    tangent.y.atan2(tangent.x) - PI / 2.0
+}
+
+fn create_start_line_mesh(width: f32, thickness: f32) -> Mesh {
+    let half_width = width * 0.5;
+    let half_thickness = thickness * 0.5;
+    let u_repeats = START_LINE_CHECKS as f32 * 0.5;
+    let mut mesh = Mesh::new(
+        bevy::mesh::PrimitiveTopology::TriangleList,
+        bevy::asset::RenderAssetUsages::default(),
+    );
+    mesh.insert_attribute(
+        Mesh::ATTRIBUTE_POSITION,
+        vec![
+            [-half_width, -half_thickness, 0.0],
+            [half_width, -half_thickness, 0.0],
+            [half_width, half_thickness, 0.0],
+            [-half_width, half_thickness, 0.0],
+        ],
+    );
+    mesh.insert_attribute(
+        Mesh::ATTRIBUTE_UV_0,
+        vec![[0.0, 0.0], [u_repeats, 0.0], [u_repeats, 1.0], [0.0, 1.0]],
+    );
+    mesh.insert_indices(bevy::mesh::Indices::U32(vec![0, 1, 2, 0, 2, 3]));
+    mesh
+}
+
+fn create_start_grid_mesh(box_count: usize) -> Mesh {
+    let mut positions = Vec::new();
+    let mut colors = Vec::new();
+    let mut indices = Vec::new();
+    let color = [0.95, 0.95, 0.9, 0.75];
+
+    for i in 0..box_count {
+        let center = grid_local_position(i);
+        let half_width = GRID_BOX_WIDTH * 0.5;
+        let half_length = GRID_BOX_LENGTH * 0.5;
+        push_colored_rect(
+            &mut positions,
+            &mut colors,
+            &mut indices,
+            center + Vec2::new(-half_width, 0.0),
+            Vec2::new(GRID_LINE_THICKNESS, GRID_BOX_LENGTH),
+            color,
+        );
+        push_colored_rect(
+            &mut positions,
+            &mut colors,
+            &mut indices,
+            center + Vec2::new(half_width, 0.0),
+            Vec2::new(GRID_LINE_THICKNESS, GRID_BOX_LENGTH),
+            color,
+        );
+        push_colored_rect(
+            &mut positions,
+            &mut colors,
+            &mut indices,
+            center + Vec2::new(0.0, half_length),
+            Vec2::new(GRID_BOX_WIDTH, GRID_LINE_THICKNESS),
+            color,
+        );
+    }
+
+    let mut mesh = Mesh::new(
+        bevy::mesh::PrimitiveTopology::TriangleList,
+        bevy::asset::RenderAssetUsages::default(),
+    );
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_COLOR, colors);
+    mesh.insert_indices(bevy::mesh::Indices::U32(indices));
+    mesh
+}
+
+fn grid_local_position(index: usize) -> Vec2 {
+    let side = if index % 2 == 0 { 1.0 } else { -1.0 };
+    Vec2::new(
+        side * GRID_LATERAL_OFFSET,
+        -(GRID_FRONT_GAP + index as f32 * GRID_ROW_SPACING),
+    )
+}
+
+fn push_colored_rect(
+    positions: &mut Vec<[f32; 3]>,
+    colors: &mut Vec<[f32; 4]>,
+    indices: &mut Vec<u32>,
+    center: Vec2,
+    size: Vec2,
+    color: [f32; 4],
+) {
+    let half_size = size * 0.5;
+    let base = positions.len() as u32;
+    positions.extend_from_slice(&[
+        [center.x - half_size.x, center.y - half_size.y, 0.0],
+        [center.x + half_size.x, center.y - half_size.y, 0.0],
+        [center.x + half_size.x, center.y + half_size.y, 0.0],
+        [center.x - half_size.x, center.y + half_size.y, 0.0],
+    ]);
+    colors.extend_from_slice(&[color; 4]);
+    indices.extend_from_slice(&[base, base + 1, base + 2, base, base + 2, base + 3]);
 }
 
 fn spawn_track_barriers(
@@ -527,10 +718,10 @@ fn tick_race_clock(mut race_clock: ResMut<RaceClock>, time: Res<Time<Fixed>>) {
     race_clock.tick(time.delta_secs());
 }
 
-fn grid_offset(index: usize) -> Vec2 {
-    let row = index as f32;
-    let side = if index % 2 == 0 { 1.0 } else { -1.0 };
-    Vec2::new(row * 2.0, side * 2.0)
+fn grid_world_position(start_point: Vec2, tangent: Vec2, index: usize) -> Vec2 {
+    let local = grid_local_position(index) + Vec2::new(0.0, -1.5);
+    let right = Vec2::new(tangent.y, -tangent.x);
+    start_point + right * local.x + tangent * local.y
 }
 
 fn handle_spawn_resolved_event(
@@ -566,18 +757,20 @@ fn spawn_car_entry(
     elf_bytes: &[u8],
 ) {
     let car_index = manager.cars.len();
-    let offset = grid_offset(car_index);
-
     let track_file =
         TrackFile::load_builtin().unwrap_or_else(|_| panic!("Failed to load track file"));
-    let start_point = track::first_point_from_file(&track_file);
+    let control_points = track_file.control_points_vec2();
+    let spline = track::build_spline(&control_points);
+    let (start_point, tangent) =
+        start_frame_from_spline(&spline, track::first_point_from_file(&track_file));
 
-    let position = start_point + offset;
+    let position = grid_world_position(start_point, tangent, car_index);
     let car_name = format!("Car {}", manager.next_car_id);
     let entity = spawn_car(
         commands,
         asset_server,
         position,
+        start_frame_rotation(tangent),
         &car_name,
         kart_body_color(car_index),
         elf_bytes,
@@ -596,6 +789,7 @@ fn spawn_car(
     commands: &mut Commands,
     asset_server: &AssetServer,
     position: Vec2,
+    rotation: f32,
     name: &str,
     body_color: Color,
     bot_elf: &[u8],
@@ -605,7 +799,7 @@ fn spawn_car(
 
     let mut entity = commands.spawn((
         Transform::from_xyz(position.x, position.y, 1.0)
-            .with_rotation(Quat::from_axis_angle(Vec3::Z, PI / 2.0)),
+            .with_rotation(Quat::from_axis_angle(Vec3::Z, rotation)),
         Visibility::default(),
         RigidBody::Dynamic,
         //LinearDamping(0.1),

@@ -312,6 +312,8 @@ Cars can only be added/removed in `PreRace` state. Each emulator car gets its ow
 
 **Track barriers** — Track TOML files may include `[[barriers]]` open polylines in world-space metres. Runtime expands each valid point pair into one textured tire-strip mesh plus one static rectangular Avian collider, using shared helpers from `track.rs`; editor Barrier mode (`B`) uses the same segment generation for previews.
 
+**Start/grid visuals** — Runtime draws a textured checkered start/finish line at the generated centreline point nearest the first control point, orthogonal to the track direction there. The line spans asphalt width only (`track_width - 2 * kerb_width`). Start grid boxes are generated in the same local frame behind the line and are open-ended U shapes.
+
 **Camera** — Free camera by default (no cars spawned at startup). Middle/right-mouse drag to pan, scroll to zoom. When a car is selected via the UI "follow" button, the camera snaps to it; clicking again unfollows.
 
 **Physics model** — Bicycle-ish 4-wheel model with a stateful longitudinal drivetrain (engine torque curve, centrifugal clutch engagement, rolling resistance, aerodynamic drag, brake torque, and traction clamp) plus lateral grip forces per wheel computed from slip angle. Uses `avian2d` for rigid body simulation. Fixed timestep at 200 Hz.
