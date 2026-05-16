@@ -45,9 +45,10 @@ fn main() -> ! {
         }
         debug.submit();
 
-        let centering = offset * 0.04;
-        let heading_correction = angle * 0.5;
-        let feedforward = -(curv_now * 0.4 + curv_near * 0.6) * speed * 0.5;
+        let centering = offset * 0.03;
+        let speed_factor = (speed / 40.0).clamp(0.0, 1.0);
+        let heading_correction = angle * (1.0 - speed_factor);
+        let feedforward = -(curv_now * (1.0 - speed_factor) + curv_near * speed_factor) * speed * 0.5;
         let steer = (centering + heading_correction + feedforward).clamp(-1.0, 1.0);
         controls.set_steering(steer);
 
@@ -62,6 +63,6 @@ fn main() -> ! {
             0.0
         };
         controls.set_brake(brake);
-        controls.set_accelerator(if brake < 0.5 { if speed < 20.0 { 1.0 } else { 0.0 } } else { 0.0 });
+        controls.set_accelerator(if brake < 0.5 { 1.0 } else { 0.0 });
     }
 }
