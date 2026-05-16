@@ -1911,6 +1911,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "botracers-race-runtime"
+version = "0.1.0"
+dependencies = [
+ "avian2d",
+ "base64",
+ "bevy",
+ "botracers-protocol",
+ "emulator",
+ "serde",
+ "serde_json",
+ "toml",
+]
+
+[[package]]
 name = "botracers-server"
 version = "0.1.0"
 dependencies = [

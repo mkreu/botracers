@@ -1,4 +1,3 @@
-use avian2d::prelude::*;
 use bevy::{diagnostic::FrameTimeDiagnosticsPlugin, prelude::*};
 
 mod bootstrap;
@@ -43,7 +42,7 @@ fn main() {
                 ..default()
             }),
             FrameTimeDiagnosticsPlugin::default(),
-            PhysicsPlugins::default(),
+            // PhysicsPlugins::default(),
             game_api::GameApiPlugin,
             race_runtime::RaceRuntimePlugin,
             bootstrap::BootstrapPlugin,

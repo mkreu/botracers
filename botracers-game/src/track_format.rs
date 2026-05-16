@@ -24,8 +24,6 @@ pub struct TrackMetadata {
     pub author: String,
     #[serde(default = "default_track_width")]
     pub track_width: f32,
-    #[serde(default = "default_kerb_width")]
-    pub kerb_width: f32,
 }
 
 impl Default for TrackMetadata {
@@ -34,7 +32,6 @@ impl Default for TrackMetadata {
             name: default_name(),
             author: String::new(),
             track_width: default_track_width(),
-            kerb_width: default_kerb_width(),
         }
     }
 }
@@ -47,10 +44,6 @@ fn default_track_width() -> f32 {
     12.0
 }
 
-fn default_kerb_width() -> f32 {
-    0.5
-}
-
 impl TrackFile {
     /// Create a new empty track with default metadata.
     pub fn new_empty(name: &str) -> Self {
@@ -59,7 +52,6 @@ impl TrackFile {
                 name: name.to_string(),
                 author: String::new(),
                 track_width: default_track_width(),
-                kerb_width: default_kerb_width(),
             },
             control_points: Vec::new(),
             barriers: Vec::new(),

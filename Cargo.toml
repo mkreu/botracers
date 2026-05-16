@@ -3,6 +3,7 @@ members = [
   "botracers-game",
   "emulator",
   "botracers-protocol",
+  "botracers-race-runtime",
   "botracers-server",
   "botracers-bot-sdk",
 ]
