@@ -1892,6 +1892,7 @@ dependencies = [
  "base64",
  "bevy",
  "botracers-protocol",
+ "botracers-race-runtime",
  "botracers-server",
  "ehttp",
  "emulator",

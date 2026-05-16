@@ -17,8 +17,6 @@ use botracers_protocol::{LoginRequest, LoginResponse};
 use botracers_server::{AuthMode, ServerConfig};
 
 use crate::game_api::{DriverType, SpawnCarRequest, SpawnResolvedCarRequest, WebApiCommand};
-use crate::race_runtime::SimState;
-
 pub struct BootstrapPlugin;
 
 impl Plugin for BootstrapPlugin {

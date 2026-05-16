@@ -6,6 +6,7 @@ mod track;
 mod vehicle_dynamics;
 
 pub struct RaceRuntimePlugin;
+pub use track::Track;
 
 impl Plugin for RaceRuntimePlugin {
     fn build(&self, app: &mut App) {

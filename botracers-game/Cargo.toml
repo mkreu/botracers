@@ -28,3 +28,4 @@ botracers-protocol = { path = "../botracers-protocol" }
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 tokio = { version = "1", features = ["rt-multi-thread"] }
 botracers-server = { path = "../botracers-server" }
+botracers-race-runtime = { path = "../botracers-race-runtime" }
