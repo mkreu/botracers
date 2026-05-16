@@ -46,7 +46,7 @@ fn main() -> ! {
         debug.submit();
 
         let centering = offset * 0.03;
-        let speed_factor = (speed / 40.0).clamp(0.0, 1.0);
+        let speed_factor = (speed / 50.0).clamp(0.0, 1.0);
         let heading_correction = angle * (1.0 - speed_factor);
         let feedforward = -(curv_now * (1.0 - speed_factor) + curv_near * speed_factor) * speed * 0.5;
         let steer = (centering + heading_correction + feedforward).clamp(-1.0, 1.0);

@@ -579,6 +579,7 @@ fn spawn_car_entry(
         asset_server,
         position,
         &car_name,
+        kart_body_color(car_index),
         elf_bytes,
         cpu_frequency.instructions_per_update(),
     );
@@ -596,6 +597,7 @@ fn spawn_car(
     asset_server: &AssetServer,
     position: Vec2,
     name: &str,
+    body_color: Color,
     bot_elf: &[u8],
     instructions_per_update: u32,
 ) -> Entity {
@@ -642,8 +644,16 @@ fn spawn_car(
             Transform::from_xyz(0.0, 0.66, 0.0),
         ));
 
+        let mut body_sprite = Sprite::from_image(asset_server.load("kart_body.png"));
+        body_sprite.color = body_color;
         parent.spawn((
-            Sprite::from_image(asset_server.load("kart.png")),
+            body_sprite,
+            Transform::from_xyz(0.0, 0.66, 0.09).with_scale(sprite_scale),
+            KartBodySprite,
+        ));
+
+        parent.spawn((
+            Sprite::from_image(asset_server.load("kart_details.png")),
             Transform::from_xyz(0.0, 0.66, 0.1).with_scale(sprite_scale),
         ));
 
@@ -681,6 +691,17 @@ fn spawn_car(
     entity_id
 }
 
+fn kart_body_color(car_index: usize) -> Color {
+    match car_index % 6 {
+        0 => Color::srgb(1.0, 1.0, 0.08),
+        1 => Color::srgb(0.1, 0.45, 1.0),
+        2 => Color::srgb(1.0, 0.12, 0.1),
+        3 => Color::srgb(0.1, 0.85, 0.25),
+        4 => Color::srgb(0.8, 0.2, 1.0),
+        _ => Color::srgb(1.0, 0.45, 0.05),
+    }
+}
+
 fn apply_cpu_frequency_setting(
     cpu_frequency: Res<CpuFrequencySetting>,
     mut cpu_query: Query<&mut CpuComponent>,
@@ -700,6 +721,9 @@ struct EmulatorDriver;
 
 #[derive(Component)]
 struct FrontWheel;
+
+#[derive(Component)]
+pub struct KartBodySprite;
 
 emulator::define_cpu_config! {
     RacingCpuConfig {
