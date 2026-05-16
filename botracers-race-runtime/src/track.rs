@@ -17,9 +17,11 @@ const GRID_LATERAL_OFFSET: f32 = 2.0;
 const GRID_ROW_SPACING: f32 = 3.5;
 const GRID_LINE_THICKNESS: f32 = 0.08;
 const KERB_WIDTH: f32 = 0.5;
-const BARRIER_WIDTH: f32 = 1.1;
-const BARRIER_TEXTURE_REPEAT_LENGTH: f32 = 1.1;
-const BARRIER_COLLIDER_OVERLAP: f32 = 0.2;
+pub const BARRIER_WIDTH: f32 = 1.1;
+pub const BARRIER_TEXTURE_REPEAT_LENGTH: f32 = 1.1;
+pub const BARRIER_COLLIDER_OVERLAP: f32 = 0.2;
+
+// TODO Fix Code reuse between here and track editor
 
 #[derive(Resource)]
 pub struct Track {
@@ -58,7 +60,7 @@ pub fn setup_track(
         Transform::from_xyz(0.0, 0.0, 0.0),
     ));
 
-    let (inner_kerb, outer_kerb) = create_kerb_meshes(&spline, track_width, kerb_width, 1000);
+    let (inner_kerb, outer_kerb) = create_kerb_meshes(&spline, track_width, 1000);
     commands.spawn((
         Mesh2d(meshes.add(inner_kerb)),
         MeshMaterial2d(materials.add(ColorMaterial::default())),
@@ -295,27 +297,27 @@ fn spawn_track_barriers(
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct BarrierSegment {
-    midpoint: Vec2,
-    length: f32,
-    angle: f32,
+pub struct BarrierSegment {
+    pub midpoint: Vec2,
+    pub length: f32,
+    pub angle: f32,
 }
 
 /// The computed cubic spline for the track centre line.
 #[derive(Resource)]
-struct TrackSpline {
-    spline: CubicCurve<Vec2>,
+pub struct TrackSpline {
+    pub spline: CubicCurve<Vec2>,
 }
 
 /// Build a closed cubic B-spline from control points.
-fn build_spline(control_points: &[Vec2]) -> CubicCurve<Vec2> {
+pub fn build_spline(control_points: &[Vec2]) -> CubicCurve<Vec2> {
     CubicBSpline::new(control_points.to_vec())
         .to_curve_cyclic()
         .expect("Failed to create cyclic curve")
 }
 
 /// Compute the arc-length of a closed spline by sampling.
-fn spline_length(spline: &CubicCurve<Vec2>, samples: usize) -> f32 {
+pub fn spline_length(spline: &CubicCurve<Vec2>, samples: usize) -> f32 {
     let domain = spline.domain();
     let t_max = domain.end();
     let mut length = 0.0f32;
@@ -329,7 +331,7 @@ fn spline_length(spline: &CubicCurve<Vec2>, samples: usize) -> f32 {
     length
 }
 
-fn barrier_segments(points: &[Vec2]) -> Vec<BarrierSegment> {
+pub fn barrier_segments(points: &[Vec2]) -> Vec<BarrierSegment> {
     points
         .windows(2)
         .filter_map(|pair| {
@@ -350,7 +352,7 @@ fn barrier_segments(points: &[Vec2]) -> Vec<BarrierSegment> {
         .collect()
 }
 
-fn create_textured_barrier_segment_mesh(length: f32, width: f32, repeat_length: f32) -> Mesh {
+pub fn create_textured_barrier_segment_mesh(length: f32, width: f32, repeat_length: f32) -> Mesh {
     let half_length = length * 0.5;
     let half_width = width * 0.5;
     let u_max = length / repeat_length.max(1e-4);
@@ -373,7 +375,7 @@ fn create_textured_barrier_segment_mesh(length: f32, width: f32, repeat_length: 
     mesh
 }
 
-fn create_tire_barrier_texture() -> Image {
+pub fn create_tire_barrier_texture() -> Image {
     const SIZE: u32 = 32;
     let mut data = Vec::with_capacity((SIZE * SIZE * 4) as usize);
     for y in 0..SIZE {
@@ -406,7 +408,7 @@ fn create_tire_barrier_texture() -> Image {
     image
 }
 
-fn create_start_finish_texture() -> Image {
+pub fn create_start_finish_texture() -> Image {
     const WIDTH: u32 = 64;
     const HEIGHT: u32 = 4;
     let mut data = Vec::with_capacity((WIDTH * HEIGHT * 4) as usize);
@@ -436,7 +438,7 @@ fn create_start_finish_texture() -> Image {
     image
 }
 
-fn create_track_mesh(spline: &CubicCurve<Vec2>, track_width: f32, segments: usize) -> Mesh {
+pub fn create_track_mesh(spline: &CubicCurve<Vec2>, track_width: f32, segments: usize) -> Mesh {
     let domain = spline.domain();
     let t_max = domain.end();
 
@@ -487,10 +489,9 @@ fn create_track_mesh(spline: &CubicCurve<Vec2>, track_width: f32, segments: usiz
     mesh
 }
 
-fn create_kerb_meshes(
+pub fn create_kerb_meshes(
     spline: &CubicCurve<Vec2>,
     track_width: f32,
-    kerb_width: f32,
     segments: usize,
 ) -> (Mesh, Mesh) {
     let domain = spline.domain();
@@ -538,9 +539,9 @@ fn create_kerb_meshes(
 
         // Inner kerb - use appropriate normal at each end
         let inner_edge_start = p - normal_start * track_width * 0.5;
-        let inner_outer_start = p - normal_start * (track_width * 0.5 - kerb_width);
+        let inner_outer_start = p - normal_start * (track_width * 0.5 - KERB_WIDTH);
         let inner_edge_end = p_next - normal_end * track_width * 0.5;
-        let inner_outer_end = p_next - normal_end * (track_width * 0.5 - kerb_width);
+        let inner_outer_end = p_next - normal_end * (track_width * 0.5 - KERB_WIDTH);
 
         let base_idx = inner_positions.len() as u32;
         inner_positions.push([inner_edge_start.x, inner_edge_start.y, 0.0]);
@@ -564,9 +565,9 @@ fn create_kerb_meshes(
         inner_indices.push(base_idx + 3);
 
         // Outer kerb - use appropriate normal at each end
-        let outer_inner_start = p + normal_start * (track_width * 0.5 - kerb_width);
+        let outer_inner_start = p + normal_start * (track_width * 0.5 - KERB_WIDTH);
         let outer_edge_start = p + normal_start * track_width * 0.5;
-        let outer_inner_end = p_next + normal_end * (track_width * 0.5 - kerb_width);
+        let outer_inner_end = p_next + normal_end * (track_width * 0.5 - KERB_WIDTH);
         let outer_edge_end = p_next + normal_end * track_width * 0.5;
 
         let base_idx = outer_positions.len() as u32;
@@ -612,7 +613,7 @@ fn create_kerb_meshes(
 ///
 /// This uses spline tangents with neighboring samples to compute a stable normal,
 /// then offsets by half the track width on both sides.
-fn sample_track_borders(
+pub fn sample_track_borders(
     spline: &CubicCurve<Vec2>,
     track_width: f32,
     segments: usize,

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use bevy::{color::palettes::css, input::mouse::MouseWheel, prelude::*, window::PrimaryWindow};
 
-use botracers_game::track::{self, TrackSpline};
+use botracers_race_runtime::track::{self, TrackSpline};
 use botracers_game::track_format::{TrackBarrier, TrackFile};
 
 // ---------------------------------------------------------------------------
@@ -340,7 +340,6 @@ fn spawn_track_visuals(
     }
     let spline = track::build_spline(&pts);
     let tw = track_file.metadata.track_width;
-    let kw = track_file.metadata.kerb_width;
 
     // Ground
     commands.spawn((
@@ -368,7 +367,7 @@ fn spawn_track_visuals(
     ));
 
     // Kerbs
-    let (inner_kerb, outer_kerb) = track::create_kerb_meshes(&spline, tw, kw, 1000);
+    let (inner_kerb, outer_kerb) = track::create_kerb_meshes(&spline, tw, 1000);
     commands.spawn((
         Mesh2d(meshes.add(inner_kerb)),
         MeshMaterial2d(materials.add(ColorMaterial::default())),

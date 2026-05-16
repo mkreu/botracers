@@ -2,7 +2,7 @@ use avian2d::{PhysicsPlugins, dynamics::integrator::Gravity};
 use bevy::prelude::*;
 
 mod cpu;
-mod track;
+pub mod track;
 mod vehicle_dynamics;
 
 pub struct RaceRuntimePlugin;
