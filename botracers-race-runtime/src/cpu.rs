@@ -1,5 +1,7 @@
 use bevy::prelude::*;
-use emulator::bevy::CpuComponent;
+use emulator::bevy::{CpuClockSpeed, CpuComponent};
+
+use crate::RaceState;
 
 mod devices;
 
@@ -7,9 +9,41 @@ pub struct CarCpuPlugin;
 
 impl Plugin for CarCpuPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<CpuFrequencySetting>();
+        app.init_resource::<CpuFrequencySetting>()
+            .add_systems(
+                FixedUpdate,
+                (
+                    devices::car_state::system.in_set(CpuSystems::PreCpu),
+                    devices::car_radar::system.in_set(CpuSystems::PreCpu),
+                    devices::car_vision::system.in_set(CpuSystems::PreCpu),
+                    sync_cpu_clock_speed.in_set(CpuSystems::PreCpu),
+                    emulator::bevy::cpu_system::<RacingCpuConfig>.in_set(CpuSystems::Cpu),
+                    devices::car_controls::system.in_set(CpuSystems::PostCpu),
+                    //tick_race_clock.in_set(CpuSystems::PostCpu),
+                )
+                    .run_if(in_state(RaceState::Racing)),
+            )
+            .add_systems(Update, devices::car_debug::system);
         // TODO Couple the frequency setting to the CPU Resource
     }
+}
+
+emulator::define_cpu_config! {
+    RacingCpuConfig {
+        1 => emulator::cpu::LogDevice,
+        2 => devices::car_state::CarStateDevice,
+        3 => devices::car_controls::CarControlsDevice,
+        4 => devices::car_vision::CarVisionDevice,
+        5 => devices::car_radar::CarRadarDevice,
+        6 => devices::car_debug::CarDebugDevice,
+    }
+}
+
+#[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
+enum CpuSystems {
+    PreCpu,
+    Cpu,
+    PostCpu,
 }
 
 #[derive(Bundle)]
@@ -42,6 +76,10 @@ const CPU_FREQUENCY_PRESETS_HZ: [u32; 10] = [
 #[derive(Resource, Clone, Copy)]
 pub struct CpuFrequencySetting {
     preset_index: usize,
+}
+
+fn sync_cpu_clock_speed(mut clock_speed: ResMut<CpuClockSpeed>, setting: Res<CpuFrequencySetting>) {
+    clock_speed.instructions_per_update = setting.instructions_per_update();
 }
 
 impl Default for CpuFrequencySetting {

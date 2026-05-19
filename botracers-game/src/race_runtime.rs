@@ -308,16 +308,7 @@ fn apply_cpu_frequency_setting(
 #[derive(Component)]
 pub struct KartBodySprite;
 
-emulator::define_cpu_config! {
-    RacingCpuConfig {
-        1 => LogDevice,
-        2 => CarStateDevice,
-        3 => CarControlsDevice,
-        4 => CarVisionDevice,
-        5 => CarRadarDevice,
-        6 => CarDebugDevice,
-    }
-}
+
 
 fn handle_car_input(
     mut car_query: Query<&mut Car, Without<EmulatorDriver>>,

@@ -117,7 +117,7 @@ impl Device for CarControlsDevice {
 }
 
 /// Runs AFTER cpu_system::<RacingCpuConfig>: reads control outputs and applies them.
-pub fn update_system(mut emu_query: Query<(&mut Car, &CarControlsDevice)>) {
+pub fn system(mut emu_query: Query<(&mut Car, &CarControlsDevice)>) {
     for (mut car, ctrl_dev) in &mut emu_query {
         car.accelerator = ctrl_dev.accelerator();
         car.brake = ctrl_dev.brake();

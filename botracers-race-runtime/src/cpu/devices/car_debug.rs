@@ -66,7 +66,7 @@ impl Device for CarDebugDevice {
 }
 
 /// Draws bot-authored debug lines in car-local coordinates.
-pub fn update_system(
+pub fn system(
     emu_query: Query<(&Transform, &CarDebugDevice), With<DebugGizmos>>,
     mut gizmos: Gizmos,
 ) {

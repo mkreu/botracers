@@ -1,3 +1,5 @@
+use std::f32::consts::PI;
+
 use avian2d::prelude::*;
 use bevy::prelude::*;
 
@@ -8,20 +10,28 @@ mod vehicle_dynamics;
 pub struct RaceRuntimePlugin;
 pub use track::Track;
 
-use crate::{cpu::CarCpuBundle, vehicle_dynamics::FrontWheel};
+use crate::{
+    cpu::CarCpuBundle,
+    vehicle_dynamics::{FrontWheel, WHEEL_BASE, WHEEL_TRACK},
+};
 
 pub const FIXED_TICK_HZ: u32 = 200;
 
 impl Plugin for RaceRuntimePlugin {
     fn build(&self, app: &mut App) {
-        app.add_plugins((PhysicsPlugins::default(), cpu::CarCpuPlugin))
-            .insert_resource(Gravity::ZERO)
-            .insert_resource(Time::<Fixed>::from_duration(
-                std::time::Duration::from_secs_f32(1.0 / FIXED_TICK_HZ as f32),
-            ))
-            .init_state::<RaceState>()
-            .add_systems(Startup, track::setup_track)
-            .add_observer(spawn_car);
+        app.add_plugins((
+            PhysicsPlugins::default(),
+            cpu::CarCpuPlugin,
+            vehicle_dynamics::VehicleDynamicsPlugin,
+        ))
+        .insert_resource(Gravity::ZERO)
+        .insert_resource(Time::<Fixed>::from_duration(
+            std::time::Duration::from_secs_f32(1.0 / FIXED_TICK_HZ as f32),
+        ))
+        .init_state::<RaceState>()
+        .add_systems(Startup, track::setup_track)
+        .add_systems(FixedUpdate, tick_race_clock)
+        .add_observer(spawn_car);
     }
 }
 
@@ -37,7 +47,6 @@ fn spawn_car(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     mut manager: ResMut<RaceSetupManager>,
-    mut messages: MessageWriter<CarSpawnedMessage>,
     state: Res<State<RaceState>>,
     track: Res<Track>,
 ) {
@@ -46,7 +55,10 @@ fn spawn_car(
     }
     let car_index = manager.cars.len();
     let (position, rotation) = track.grid_start_position(car_index);
-    let car_name = format!("[{}] {}#{}", manager.next_car_id, event.name, event.artifact_id.0);
+    let car_name = format!(
+        "[{}] {}#{}",
+        manager.next_car_id, event.name, event.artifact_id.0
+    );
 
     let sprite_scale = Vec3::splat(0.008);
 
@@ -118,26 +130,12 @@ fn spawn_car(
                 ));
             });
     });
-    
+
     manager.cars.push(CarEntry {
-        entity:entity_id,
+        entity: entity_id,
         name: car_name,
     });
     manager.next_car_id += 1;
-}
-
-fn spawn_car_hierarchy(
-    commands: &mut Commands,
-    asset_server: &AssetServer,
-    position: Vec2,
-    rotation: f32,
-    name: &str,
-    body_color: Color,
-    bot_elf: &[u8],
-    instructions_per_update: u32,
-) -> Entity {
-    
-    entity_id
 }
 
 fn kart_body_color(car_index: usize) -> Color {
@@ -189,6 +187,10 @@ impl RaceClock {
     pub fn tick(&mut self, delta_secs: f32) {
         self.elapsed_secs += delta_secs;
     }
+}
+
+fn tick_race_clock(mut race_clock: ResMut<RaceClock>, time: Res<Time<Fixed>>) {
+    race_clock.tick(time.delta_secs());
 }
 
 #[derive(Resource)]

@@ -11,14 +11,13 @@ use botracers_game::{camera::CameraPlugin, track_format::TrackFile};
 fn main() {
     let track_file = TrackFile::load_builtin().expect("Failed to load built-in track");
 
-    let track = Track {
-        control_points: track_file
+    let track = Track::new(track_file
             .control_points
             .iter()
             .map(|&[x, y]| Vec2::new(x, y))
             .collect(),
-        width: track_file.metadata.track_width,
-        barriers: track_file
+        track_file.metadata.track_width,
+        track_file
             .barriers
             .iter()
             .map(|b| {
@@ -27,8 +26,7 @@ fn main() {
                     .map(|&[x, y]| Vec2::new(x, y))
                     .collect::<Vec<_>>()
             })
-            .collect(),
-    };
+            .collect());
 
     App::new()
         .insert_resource(track)

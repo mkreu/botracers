@@ -1,15 +1,26 @@
 use std::f32::consts::PI;
 
 use avian2d::dynamics::rigid_body::forces::ForcesItem;
+use avian2d::prelude::*;
 use bevy::color::palettes::css::*;
 use bevy::prelude::*;
-use avian2d::prelude::*;
 
-use crate::{Car, DebugGizmos};
-
+use crate::{Car, DebugGizmos, RaceState};
 
 pub const WHEEL_BASE: f32 = 1.18;
 pub const WHEEL_TRACK: f32 = 0.95;
+
+pub struct VehicleDynamicsPlugin;
+
+impl Plugin for VehicleDynamicsPlugin {
+    fn build(&self, app: &mut App) {
+        app.insert_resource(KartLongitudinalParams::default())
+            .add_systems(
+                FixedUpdate,
+                apply_car_forces.run_if(in_state(RaceState::Racing)),
+            );
+    }
+}
 
 #[derive(Component, Default, Clone)]
 pub struct LongitudinalDebugData {
@@ -80,9 +91,6 @@ impl Default for KartLongitudinalParams {
         }
     }
 }
-
-#[derive(Component)]
-struct EmulatorDriver;
 
 #[derive(Component)]
 pub struct FrontWheel;
@@ -269,8 +277,6 @@ fn apply_wheel_force(
         forces.apply_linear_acceleration_at_point(force, wheel_pos);
     }
 }
-
-
 
 fn rpm_to_rad_per_sec(rpm: f32) -> f32 {
     rpm * (2.0 * PI / 60.0)

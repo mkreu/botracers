@@ -86,7 +86,7 @@ impl Device for CarRadarDevice {
 }
 
 /// Runs BEFORE cpu_system::<RacingCpuConfig>: writes nearest-car positions into CarRadarDevice.
-pub fn update_system(
+pub fn system(
     all_cars: Query<(Entity, &Transform), With<Car>>,
     mut emu_query: Query<(Entity, &Transform, &mut CarRadarDevice)>,
 ) {
