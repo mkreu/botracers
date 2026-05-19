@@ -1,15 +1,40 @@
 use bevy::prelude::*;
+use emulator::bevy::CpuComponent;
+
+mod devices;
 
 pub struct CarCpuPlugin;
 
 impl Plugin for CarCpuPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<CpuFrequencySetting>();
-
+        // TODO Couple the frequency setting to the CPU Resource
     }
 }
 
-pub const FIXED_TICK_HZ: u32 = 200;
+#[derive(Bundle)]
+pub struct CarCpuBundle(
+    CpuComponent,
+    devices::car_debug::CarDebugDevice,
+    devices::car_state::CarStateDevice,
+    devices::car_controls::CarControlsDevice,
+    devices::car_radar::CarRadarDevice,
+    devices::car_vision::CarVisionDevice,
+);
+
+impl CarCpuBundle {
+    pub fn new(elf_bytes: &[u8]) -> Self {
+        Self(
+            CpuComponent::new(elf_bytes),
+            devices::car_debug::CarDebugDevice::default(),
+            devices::car_state::CarStateDevice::default(),
+            devices::car_controls::CarControlsDevice::default(),
+            devices::car_radar::CarRadarDevice::default(),
+            devices::car_vision::CarVisionDevice::default(),
+        )
+    }
+}
+
 const CPU_FREQUENCY_PRESETS_HZ: [u32; 10] = [
     1_000, 5_000, 10_000, 20_000, 50_000, 100_000, 200_000, 500_000, 1_000_000, 2_000_000,
 ];
@@ -33,7 +58,7 @@ impl CpuFrequencySetting {
     }
 
     pub fn instructions_per_update(&self) -> u32 {
-        (self.hz() / FIXED_TICK_HZ).max(1)
+        (self.hz() / super::FIXED_TICK_HZ).max(1)
     }
 
     pub fn step_up(&mut self) {

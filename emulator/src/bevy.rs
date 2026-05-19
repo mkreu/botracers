@@ -93,26 +93,21 @@ pub trait CpuConfig: Send + Sync + 'static {
 pub struct CpuComponent {
     hart: crate::cpu::Hart,
     dram: crate::cpu::Dram,
-    instructions_per_update: u32,
+}
+
+#[derive(Resource, Component)]
+pub struct CpuClockSpeed {
+    pub instructions_per_update: u32,
 }
 
 impl CpuComponent {
     /// Create a new CpuComponent from an ELF binary.
-    pub fn new(elf: &[u8], instructions_per_update: u32) -> Self {
+    pub fn new(elf: &[u8]) -> Self {
         let (hart, dram) = CpuBuilder::default().build(elf);
         Self {
             hart,
             dram,
-            instructions_per_update,
         }
-    }
-
-    pub fn instructions_per_update(&self) -> u32 {
-        self.instructions_per_update
-    }
-
-    pub fn set_instructions_per_update(&mut self, value: u32) {
-        self.instructions_per_update = value.max(1);
     }
 }
 
@@ -128,14 +123,17 @@ fn run_one_instruction(cpu: &mut CpuComponent, device_refs: &mut [&mut dyn Devic
     cpu.hart.execute(decoded, len, &mut mmu);
 }
 
-fn run_cpu(cpu: &mut CpuComponent, device_refs: &mut [&mut dyn Device]) {
-    for _ in 0..cpu.instructions_per_update {
+fn run_cpu(cpu: &mut CpuComponent, instruction_count: u32, device_refs: &mut [&mut dyn Device]) {
+    for _ in 0..instruction_count {
         run_one_instruction(cpu, device_refs);
     }
 }
 
-pub fn cpu_system<C: CpuConfig>(mut cpu_query: Query<(&mut CpuComponent, C::Devices)>) {
-    for (mut cpu, devices) in cpu_query.iter_mut() {
+pub fn cpu_system<C: CpuConfig>(
+    mut cpu_query: Query<(&mut CpuComponent, C::Devices, Option<&CpuClockSpeed>)>,
+    global_cpu_clock_speed: Res<CpuClockSpeed>,
+) {
+    for (mut cpu, devices, clock_speed) in cpu_query.iter_mut() {
         C::with_slotted_devices(devices, |slotted| {
             slotted.sort_by_key(|entry| entry.0);
 
@@ -152,7 +150,10 @@ pub fn cpu_system<C: CpuConfig>(mut cpu_query: Query<(&mut CpuComponent, C::Devi
             for (_, device) in slotted.iter_mut() {
                 device_refs.push(&mut **device);
             }
-            run_cpu(cpu.as_mut(), &mut device_refs);
+            let instruction_count = clock_speed
+                .unwrap_or(&global_cpu_clock_speed)
+                .instructions_per_update;
+            run_cpu(cpu.as_mut(), instruction_count, &mut device_refs);
         });
     }
 }

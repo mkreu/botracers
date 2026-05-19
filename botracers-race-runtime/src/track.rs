@@ -25,10 +25,31 @@ pub const BARRIER_COLLIDER_OVERLAP: f32 = 0.2;
 
 #[derive(Resource)]
 pub struct Track {
-    pub control_points: Vec<Vec2>,
-    pub width: f32,
-    pub barriers: Vec<Vec<Vec2>>,
+    control_points: Vec<Vec2>,
+    width: f32,
+    barriers: Vec<Vec<Vec2>>,
+    spline: CubicCurve<Vec2>,
 }
+
+impl Track {
+    pub fn new(control_points: Vec<Vec2>, width: f32, barriers: Vec<Vec<Vec2>>) -> Self {
+        let spline = build_spline(&control_points);
+        Self {
+            control_points,
+            width,
+            barriers,
+            spline,
+        }
+    }
+
+    pub fn grid_start_position(&self, car_index: usize) -> (Vec2, f32) {
+        let (start_point, tangent) =
+            start_frame_from_spline(&self.spline, self.control_points[0]);
+        let rotation = start_frame_rotation(tangent);
+        (grid_world_position(start_point, tangent, car_index), rotation)
+    }
+}
+
 
 pub fn setup_track(
     mut commands: Commands,
@@ -241,6 +262,12 @@ fn grid_local_position(index: usize) -> Vec2 {
         side * GRID_LATERAL_OFFSET,
         -(GRID_FRONT_GAP + index as f32 * GRID_ROW_SPACING),
     )
+}
+
+fn grid_world_position(start_point: Vec2, tangent: Vec2, index: usize) -> Vec2 {
+    let local = grid_local_position(index) + Vec2::new(0.0, -1.5);
+    let right = Vec2::new(tangent.y, -tangent.x);
+    start_point + right * local.x + tangent * local.y
 }
 
 fn push_colored_rect(

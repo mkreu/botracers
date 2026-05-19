@@ -24,17 +24,10 @@ pub struct RaceRuntimePlugin;
 impl Plugin for RaceRuntimePlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<SimState>()
-            .insert_resource(Gravity::ZERO)
-            .insert_resource(Time::<Fixed>::from_duration(
-                std::time::Duration::from_secs_f32(1.0 / FIXED_TICK_HZ as f32),
-            ))
             .insert_resource(RaceManager::default())
             .insert_resource(FollowCar::default())
             .insert_resource(RaceClock::default())
             .insert_resource(KartLongitudinalParams::default())
-            .insert_resource(CpuFrequencySetting::default())
-            .add_systems(Startup, (setup_track, setup.after(setup_track)))
-            .add_systems(Startup, set_default_zoom.after(setup))
             .add_systems(Startup, pause_physics)
             .add_systems(OnEnter(SimState::Racing), unpause_physics)
             .add_systems(OnEnter(SimState::Paused), pause_physics)

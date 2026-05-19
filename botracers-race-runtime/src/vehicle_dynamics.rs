@@ -8,8 +8,8 @@ use avian2d::prelude::*;
 use crate::{Car, DebugGizmos};
 
 
-const WHEEL_BASE: f32 = 1.18;
-const WHEEL_TRACK: f32 = 0.95;
+pub const WHEEL_BASE: f32 = 1.18;
+pub const WHEEL_TRACK: f32 = 0.95;
 
 #[derive(Component, Default, Clone)]
 pub struct LongitudinalDebugData {
@@ -85,7 +85,7 @@ impl Default for KartLongitudinalParams {
 struct EmulatorDriver;
 
 #[derive(Component)]
-struct FrontWheel;
+pub struct FrontWheel;
 
 fn apply_car_forces(
     mut car_query: Query<(
