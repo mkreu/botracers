@@ -24,7 +24,6 @@ impl Plugin for CarCpuPlugin {
                     .run_if(in_state(RaceState::Racing)),
             )
             .add_systems(Update, devices::car_debug::system);
-        // TODO Couple the frequency setting to the CPU Resource
     }
 }
 

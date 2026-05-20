@@ -1,11 +1,9 @@
 use bevy::prelude::*;
+use botracers_game::camera::CameraFollow;
+use botracers_race_runtime::{ArtifactId, Car, CpuFrequencySetting, DebugGizmos, RaceManager, RaceState};
 
 use crate::bootstrap::WebPortalState;
-use crate::game_api::{DriverType, SpawnCarRequest, WebApiCommand};
-use crate::race_runtime::{
-    CarLabel, CpuFrequencySetting, FollowCar, LongitudinalDebugData, RaceManager, SimState,
-};
-use botracers_game::DebugGizmos;
+use crate::game_api::{SpawnCarRequest, WebApiCommand};
 
 pub struct BootstrapUiPlugin;
 
@@ -39,8 +37,8 @@ impl Plugin for RaceRuntimeUiPlugin {
                 handle_cpu_frequency_buttons,
                 handle_start_button,
                 handle_reset_button,
-                update_console_output,
-                update_debug_telemetry_ui,
+                //update_console_output,
+                //update_debug_telemetry_ui,
                 update_cpu_frequency_text,
                 update_start_button_text,
             ),
@@ -55,17 +53,17 @@ struct StatusDialogText;
 #[derive(Component)]
 struct ArtifactListContainer;
 #[derive(Component)]
-struct ArtifactListRow(#[allow(dead_code)] i64);
+struct ArtifactListRow(#[allow(dead_code)] ArtifactId);
 #[derive(Component)]
 struct RefreshArtifactsButton;
 #[derive(Component)]
 struct UploadArtifactButton;
 #[derive(Component)]
-struct SpawnArtifactButton(i64);
+struct SpawnArtifactButton(ArtifactId);
 #[derive(Component)]
-struct DeleteArtifactButton(i64);
+struct DeleteArtifactButton(ArtifactId);
 #[derive(Component)]
-struct ToggleArtifactVisibilityButton(i64, bool);
+struct ToggleArtifactVisibilityButton(ArtifactId, bool);
 #[derive(Component)]
 struct CpuFrequencyMinusButton;
 #[derive(Component)]
@@ -397,7 +395,7 @@ fn update_artifact_list_ui(
     }
 
     for artifact in &web_state.artifacts {
-        let artifact_id = artifact.id;
+        let artifact_id = ArtifactId(artifact.id);
         let visibility = if artifact.is_public {
             "public"
         } else {
@@ -484,17 +482,15 @@ fn update_artifact_list_ui(
 fn handle_artifact_spawn_button(
     query: Query<(&Interaction, &SpawnArtifactButton), Changed<Interaction>>,
     mut spawn_events: MessageWriter<SpawnCarRequest>,
-    state: Res<State<SimState>>,
+    state: Res<State<RaceState>>,
 ) {
-    if *state.get() != SimState::PreRace {
+    if *state.get() != RaceState::PreRace {
         return;
     }
 
     for (interaction, spawn_btn) in &query {
         if *interaction == Interaction::Pressed {
-            spawn_events.write(SpawnCarRequest {
-                driver: DriverType::RemoteArtifact { id: spawn_btn.0 },
-            });
+            spawn_events.write(SpawnCarRequest(spawn_btn.0));
         }
     }
 }
@@ -502,9 +498,9 @@ fn handle_artifact_spawn_button(
 fn handle_artifact_delete_button(
     query: Query<(&Interaction, &DeleteArtifactButton), Changed<Interaction>>,
     mut web_commands: MessageWriter<WebApiCommand>,
-    state: Res<State<SimState>>,
+    state: Res<State<RaceState>>,
 ) {
-    if *state.get() != SimState::PreRace {
+    if *state.get() != RaceState::PreRace {
         return;
     }
 
@@ -518,9 +514,9 @@ fn handle_artifact_delete_button(
 fn handle_artifact_visibility_button(
     query: Query<(&Interaction, &ToggleArtifactVisibilityButton), Changed<Interaction>>,
     mut web_commands: MessageWriter<WebApiCommand>,
-    state: Res<State<SimState>>,
+    state: Res<State<RaceState>>,
 ) {
-    if *state.get() != SimState::PreRace {
+    if *state.get() != RaceState::PreRace {
         return;
     }
 
@@ -536,20 +532,20 @@ fn handle_artifact_visibility_button(
 
 fn handle_start_button(
     query: Query<&Interaction, (Changed<Interaction>, With<StartButton>)>,
-    current_state: Res<State<SimState>>,
-    mut next_state: ResMut<NextState<SimState>>,
+    current_state: Res<State<RaceState>>,
+    mut next_state: ResMut<NextState<RaceState>>,
 ) {
     for interaction in &query {
         if *interaction == Interaction::Pressed {
             match current_state.get() {
-                SimState::PreRace => {
-                    next_state.set(SimState::Racing);
+                RaceState::PreRace => {
+                    next_state.set(RaceState::Racing);
                 }
-                SimState::Racing => {
-                    next_state.set(SimState::Paused);
+                RaceState::Racing => {
+                    next_state.set(RaceState::Paused);
                 }
-                SimState::Paused => {
-                    next_state.set(SimState::Racing);
+                RaceState::Paused => {
+                    next_state.set(RaceState::Racing);
                 }
             }
         }
@@ -557,7 +553,7 @@ fn handle_start_button(
 }
 
 fn update_start_button_text(
-    state: Res<State<SimState>>,
+    state: Res<State<RaceState>>,
     start_btn_query: Query<&Children, With<StartButton>>,
     mut text_query: Query<&mut Text>,
 ) {
@@ -568,9 +564,9 @@ fn update_start_button_text(
         for child in children.iter() {
             if let Ok(mut text) = text_query.get_mut(child) {
                 text.0 = match state.get() {
-                    SimState::PreRace => "Start".into(),
-                    SimState::Racing => "Pause".into(),
-                    SimState::Paused => "Resume".into(),
+                    RaceState::PreRace => "Start".into(),
+                    RaceState::Racing => "Pause".into(),
+                    RaceState::Paused => "Resume".into(),
                 };
             }
         }
@@ -579,9 +575,9 @@ fn update_start_button_text(
 
 fn handle_reset_button(
     query: Query<&Interaction, (Changed<Interaction>, With<ResetButton>)>,
-    mut next_state: ResMut<NextState<SimState>>,
+    mut next_state: ResMut<NextState<RaceState>>,
     mut manager: ResMut<RaceManager>,
-    car_query: Query<Entity, With<CarLabel>>,
+    car_query: Query<Entity, With<Car>>,
     mut commands: Commands,
 ) {
     for interaction in &query {
@@ -591,7 +587,7 @@ fn handle_reset_button(
             }
             manager.cars.clear();
             manager.next_car_id = 1;
-            next_state.set(SimState::PreRace);
+            next_state.set(RaceState::PreRace);
         }
     }
 }
@@ -600,9 +596,9 @@ fn handle_remove_car_button(
     query: Query<(&Interaction, &RemoveCarButton), Changed<Interaction>>,
     mut manager: ResMut<RaceManager>,
     mut commands: Commands,
-    state: Res<State<SimState>>,
+    state: Res<State<RaceState>>,
 ) {
-    if *state.get() != SimState::PreRace {
+    if *state.get() != RaceState::PreRace {
         return;
     }
     for (interaction, remove_btn) in &query {
@@ -633,15 +629,15 @@ fn handle_toggle_gizmos_button(
 
 fn handle_follow_car_button(
     query: Query<(&Interaction, &FollowCarButton), Changed<Interaction>>,
-    mut follow: ResMut<FollowCar>,
+    follow_query: Query<Entity, With<CameraFollow>>,
+    mut commands: Commands,
 ) {
     for (interaction, follow_btn) in &query {
         if *interaction == Interaction::Pressed {
-            if follow.target == Some(follow_btn.0) {
-                follow.target = None;
-            } else {
-                follow.target = Some(follow_btn.0);
+            for entity in &follow_query {
+                commands.entity(entity).remove::<CameraFollow>();
             }
+            commands.entity(follow_btn.0).insert(CameraFollow);
         }
     }
 }
@@ -683,12 +679,12 @@ fn update_car_list_ui(
     container_query: Query<Entity, With<CarListContainer>>,
     existing_rows: Query<(Entity, &CarListRow)>,
     gizmo_query: Query<(), With<DebugGizmos>>,
+    follow_query: Query<(), With<CameraFollow>>,
     added_gizmos: Query<(), Added<DebugGizmos>>,
     mut removed_gizmos: RemovedComponents<DebugGizmos>,
-    follow: Res<FollowCar>,
 ) {
     let gizmos_changed = !added_gizmos.is_empty() || removed_gizmos.read().next().is_some();
-    if !manager.is_changed() && !follow.is_changed() && !gizmos_changed {
+    if !manager.is_changed() && !gizmos_changed {
         return;
     }
 
@@ -703,8 +699,8 @@ fn update_car_list_ui(
     for entry in &manager.cars {
         let entity = entry.entity;
         let has_gizmos = gizmo_query.get(entity).is_ok();
-        let is_followed = follow.target == Some(entity);
-        let driver_label = entry.driver.label();
+        let is_followed = follow_query.get(entity).is_ok();
+        let driver_label = &entry.name;
 
         commands.entity(container).with_children(|list| {
             list.spawn((
@@ -782,7 +778,7 @@ fn update_car_list_ui(
     }
 }
 
-fn update_debug_telemetry_ui(
+/*fn update_debug_telemetry_ui(
     follow: Res<FollowCar>,
     telemetry_query: Query<(&CarLabel, &LongitudinalDebugData), With<DebugGizmos>>,
     mut text_query: Query<&mut Text, With<DebugTelemetryText>>,
@@ -833,11 +829,11 @@ fn update_debug_telemetry_ui(
     };
 
     text.0 = message;
-}
+}*/
 
-fn update_console_output(
+/*fn update_console_output(
     mut manager: ResMut<RaceManager>,
-    mut cpu_query: Query<(&CarLabel, &mut emulator::cpu::LogDevice)>,
+    mut cpu_query: Query<(&Car, &mut emulator::cpu::LogDevice)>,
     container_query: Query<Entity, With<ConsoleTextContainer>>,
     mut commands: Commands,
     existing_texts: Query<Entity, (With<Text>, With<ConsoleText>)>,
@@ -892,4 +888,4 @@ fn update_console_output(
             ));
         }
     });
-}
+}*/

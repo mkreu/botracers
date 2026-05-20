@@ -100,6 +100,14 @@ pub struct CpuClockSpeed {
     pub instructions_per_update: u32,
 }
 
+impl CpuClockSpeed {
+    pub fn new(instructions_per_update: u32) -> Self {
+        Self {
+            instructions_per_update,
+        }
+    }
+}
+
 impl CpuComponent {
     /// Create a new CpuComponent from an ELF binary.
     pub fn new(elf: &[u8]) -> Self {

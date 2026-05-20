@@ -13,10 +13,11 @@ use botracers_protocol::{
 };
 #[cfg(not(target_arch = "wasm32"))]
 use botracers_protocol::{LoginRequest, LoginResponse};
+use botracers_race_runtime::{ArtifactId, RaceState};
 #[cfg(not(target_arch = "wasm32"))]
 use botracers_server::{AuthMode, ServerConfig};
 
-use crate::game_api::{DriverType, SpawnCarRequest, SpawnResolvedCarRequest, WebApiCommand};
+use crate::game_api::{SpawnCarRequest, WebApiCommand};
 pub struct BootstrapPlugin;
 
 impl Plugin for BootstrapPlugin {
@@ -48,7 +49,7 @@ pub struct BootstrapConfig {
 }
 
 pub struct CompileResult {
-    pub id: u64,
+    pub request_id: u64,
     pub binary: String,
     pub result: Result<Vec<u8>, String>,
 }
@@ -56,7 +57,7 @@ pub struct CompileResult {
 #[derive(Resource)]
 pub struct ArtifactFetchPipeline {
     pub async_results: Arc<Mutex<Vec<CompileResult>>>,
-    pub pending: HashMap<u64, DriverType>,
+    pub pending: HashMap<u64, ArtifactId>,
     pub next_request_id: u64,
 }
 
@@ -78,11 +79,11 @@ enum WebApiEvent {
     Artifacts(Result<Vec<ArtifactSummary>, String>),
     UploadResult(Result<UploadArtifactResponse, String>),
     DeleteResult {
-        artifact_id: i64,
+        artifact_id: ArtifactId,
         result: Result<(), String>,
     },
     VisibilityResult {
-        artifact_id: i64,
+        artifact_id: ArtifactId,
         is_public: bool,
         result: Result<(), String>,
     },
@@ -387,7 +388,7 @@ fn web_upload_artifact(
 fn web_delete_artifact(
     server_url: &str,
     _token: Option<&str>,
-    artifact_id: i64,
+    artifact_id: ArtifactId,
     queue: Arc<Mutex<Vec<WebApiEvent>>>,
 ) {
     let url = web_api_url(server_url, &format!("/api/v1/artifacts/{artifact_id}"));
@@ -424,7 +425,7 @@ fn web_delete_artifact(
 fn web_set_artifact_visibility(
     server_url: &str,
     _token: Option<&str>,
-    artifact_id: i64,
+    artifact_id: ArtifactId,
     is_public: bool,
     queue: Arc<Mutex<Vec<WebApiEvent>>>,
 ) {
@@ -483,7 +484,7 @@ fn web_set_artifact_visibility(
 fn web_fetch_artifact_elf(
     server_url: &str,
     token: Option<&str>,
-    artifact_id: i64,
+    artifact_id: ArtifactId,
     request_id: u64,
     results_queue: Arc<Mutex<Vec<CompileResult>>>,
 ) {
@@ -492,17 +493,17 @@ fn web_fetch_artifact_elf(
     ehttp::fetch(request, move |result| {
         let compile_result = match result {
             Ok(resp) if resp.ok => CompileResult {
-                id: request_id,
+                request_id,
                 binary: format!("artifact_{artifact_id}"),
                 result: Ok(resp.bytes),
             },
             Ok(resp) => CompileResult {
-                id: request_id,
+                request_id,
                 binary: format!("artifact_{artifact_id}"),
                 result: Err(response_error(&resp)),
             },
             Err(err) => CompileResult {
-                id: request_id,
+                request_id,
                 binary: format!("artifact_{artifact_id}"),
                 result: Err(format!("network error: {err}")),
             },
@@ -835,47 +836,43 @@ fn handle_spawn_car_request(
     mut events: MessageReader<SpawnCarRequest>,
     mut fetch_pipeline: ResMut<ArtifactFetchPipeline>,
     mut web_state: ResMut<WebPortalState>,
-    state: Res<State<SimState>>,
+    state: Res<State<RaceState>>,
 ) {
     for event in events.read() {
-        if *state.get() != SimState::PreRace {
+        if *state.get() != RaceState::PreRace {
             continue;
         }
 
         let request_id = fetch_pipeline.next_request_id;
+        let artifact_id = event.0;
         fetch_pipeline.next_request_id += 1;
-        fetch_pipeline
-            .pending
-            .insert(request_id, event.driver.clone());
+        fetch_pipeline.pending.insert(request_id, artifact_id);
 
-        match &event.driver {
-            DriverType::RemoteArtifact { id } => {
-                let token = match maybe_auth_token(&web_state) {
-                    Ok(token) => token,
-                    Err(error) => {
-                        fetch_pipeline.pending.remove(&request_id);
-                        web_state.status_message = Some(error);
-                        continue;
-                    }
-                };
-                web_state.status_message = Some(format!("Downloading artifact #{id}..."));
-                web_fetch_artifact_elf(
-                    &web_state.server_url,
-                    token.as_deref(),
-                    *id,
-                    request_id,
-                    fetch_pipeline.async_results.clone(),
-                );
+
+        let token = match maybe_auth_token(&web_state) {
+            Ok(token) => token,
+            Err(error) => {
+                fetch_pipeline.pending.remove(&request_id);
+                web_state.status_message = Some(error);
+                continue;
             }
-        }
+        };
+        web_state.status_message = Some(format!("Downloading artifact #{artifact_id}..."));
+        web_fetch_artifact_elf(
+            &web_state.server_url,
+            token.as_deref(),
+            artifact_id,
+            request_id,
+            fetch_pipeline.async_results.clone(),
+        );
     }
 }
 
 fn process_artifact_fetch_results(
     mut fetch_pipeline: ResMut<ArtifactFetchPipeline>,
-    mut resolved_events: MessageWriter<SpawnResolvedCarRequest>,
     mut web_state: ResMut<WebPortalState>,
-    state: Res<State<SimState>>,
+    state: Res<State<RaceState>>,
+    mut commands: Commands,
 ) {
     let mut results = Vec::new();
     if let Ok(mut async_results) = fetch_pipeline.async_results.lock() {
@@ -883,13 +880,13 @@ fn process_artifact_fetch_results(
     }
 
     for result in results {
-        let Some(driver) = fetch_pipeline.pending.remove(&result.id) else {
+        let Some(artifact_id) = fetch_pipeline.pending.remove(&result.request_id) else {
             continue;
         };
 
         match result.result {
             Ok(elf_bytes) => {
-                if *state.get() != SimState::PreRace {
+                if *state.get() != RaceState::PreRace {
                     web_state.status_message = Some(format!(
                         "Discarded compiled '{}' result (race already started)",
                         result.binary
@@ -897,10 +894,10 @@ fn process_artifact_fetch_results(
                     continue;
                 }
 
-                resolved_events.write(SpawnResolvedCarRequest {
-                    driver,
+                commands.trigger(botracers_race_runtime::SpawnCarRequest {
+                    name: result.binary.clone(),
+                    artifact_id,
                     elf_bytes,
-                    binary_name: result.binary.clone(),
                 });
                 web_state.status_message = Some(format!("Loaded and spawned '{}'", result.binary));
             }

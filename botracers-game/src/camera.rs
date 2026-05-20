@@ -67,9 +67,9 @@ fn set_default_zoom(mut camera_query: Query<&mut Projection, With<Camera2d>>) {
     }
 }
 
-// TODO IMPLEMENT ATTACHING THIS
 #[derive(Component)]
-struct CameraFollow;
+#[component(storage = "SparseSet")]
+pub struct CameraFollow;
 
 fn update_camera(
     follow_query: Query<&Transform, With<CameraFollow>>,

@@ -342,19 +342,3 @@ fn handle_car_input(
     }
 }
 
-
-
-fn draw_gizmos(car_query: Query<(&Transform, &Car), With<DebugGizmos>>, mut gizmos: Gizmos) {
-    for (transform, _car) in &car_query {
-        gizmos.cross(transform.to_isometry(), 0.2, RED);
-        gizmos.cross(
-            Isometry3d::new(
-                transform.translation + transform.up() * WHEEL_BASE,
-                transform.rotation,
-            ),
-            0.2,
-            RED,
-        );
-    }
-}
-

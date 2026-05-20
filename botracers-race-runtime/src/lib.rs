@@ -1,14 +1,16 @@
 use std::f32::consts::PI;
 
 use avian2d::prelude::*;
-use bevy::prelude::*;
+use bevy::{color::palettes::css::RED, prelude::*};
 
 mod cpu;
 pub mod track;
 mod vehicle_dynamics;
 
 pub struct RaceRuntimePlugin;
+use emulator::bevy::CpuClockSpeed;
 pub use track::Track;
+pub use cpu::CpuFrequencySetting;
 
 use crate::{
     cpu::CarCpuBundle,
@@ -24,6 +26,9 @@ impl Plugin for RaceRuntimePlugin {
             cpu::CarCpuPlugin,
             vehicle_dynamics::VehicleDynamicsPlugin,
         ))
+        .init_resource::<RaceManager>()
+        .init_resource::<RaceClock>()
+        .insert_resource(CpuClockSpeed::new(1_000_000 / FIXED_TICK_HZ))
         .insert_resource(Gravity::ZERO)
         .insert_resource(Time::<Fixed>::from_duration(
             std::time::Duration::from_secs_f32(1.0 / FIXED_TICK_HZ as f32),
@@ -31,6 +36,7 @@ impl Plugin for RaceRuntimePlugin {
         .init_state::<RaceState>()
         .add_systems(Startup, track::setup_track)
         .add_systems(FixedUpdate, tick_race_clock)
+        .add_systems(Update, draw_gizmos)
         .add_observer(spawn_car);
     }
 }
@@ -46,7 +52,7 @@ fn spawn_car(
     event: On<SpawnCarRequest>,
     mut commands: Commands,
     asset_server: Res<AssetServer>,
-    mut manager: ResMut<RaceSetupManager>,
+    mut manager: ResMut<RaceManager>,
     state: Res<State<RaceState>>,
     track: Res<Track>,
 ) {
@@ -159,7 +165,7 @@ pub enum RaceState {
 
 /// Marker component — when present on a car entity, debug gizmos are drawn for that car.
 #[derive(Component)]
-struct DebugGizmos;
+pub struct DebugGizmos;
 
 #[derive(Component)]
 pub struct Car {
@@ -194,12 +200,12 @@ fn tick_race_clock(mut race_clock: ResMut<RaceClock>, time: Res<Time<Fixed>>) {
 }
 
 #[derive(Resource)]
-pub struct RaceSetupManager {
+pub struct RaceManager {
     pub cars: Vec<CarEntry>,
     pub next_car_id: u32,
 }
 
-impl Default for RaceSetupManager {
+impl Default for RaceManager {
     fn default() -> Self {
         Self {
             cars: Vec::new(),
@@ -213,4 +219,26 @@ pub struct CarEntry {
     pub name: String,
 }
 
-pub struct ArtifactId(i64);
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ArtifactId(pub i64);
+
+impl std::fmt::Display for ArtifactId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+
+fn draw_gizmos(car_query: Query<(&Transform, &Car), With<DebugGizmos>>, mut gizmos: Gizmos) {
+    for (transform, _car) in &car_query {
+        gizmos.cross(transform.to_isometry(), 0.2, RED);
+        gizmos.cross(
+            Isometry3d::new(
+                transform.translation + transform.up() * WHEEL_BASE,
+                transform.rotation,
+            ),
+            0.2,
+            RED,
+        );
+    }
+}
